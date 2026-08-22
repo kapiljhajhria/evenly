@@ -232,6 +232,26 @@ npm run deploy:rules       # after touching firestore.rules or storage.rules
 `shared/` is bundled into both, so a change there needs **both** hosting and
 functions redeployed or the client and server will disagree about split math.
 
+## How users get an update
+
+The running page is served from the **active** service worker's precache, so a
+deploy does not reach an open app on its own. Three things make it land:
+
+1. `UpdateTicker` shows a bar at the top of the app when a new build is waiting,
+   with an "Update now" button and per-OS instructions behind "Nothing
+   happened?". It re-checks hourly and whenever the app returns to the
+   foreground, so a session left open for days still notices.
+2. `Cache-Control: no-cache` on `/sw.js`, `/index.html`,
+   `/manifest.webmanifest` and `/registerSW.js`, so the browser always sees the
+   new service worker and the current app name.
+3. Failing all that: fully closing the app activates the waiting worker.
+   Backgrounding it is not enough — every window has to go.
+
+**The ticker cannot retrofit itself onto an older install.** A build that
+predates the component has no ticker in it, so those users need one manual
+close-and-reopen. There is no way around that; it is a property of how service
+workers hand over, not a bug. Say so when you announce a release.
+
 ## Troubleshooting
 
 **`this index is not necessary, configure using single field index controls`**

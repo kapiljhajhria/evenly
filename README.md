@@ -41,7 +41,7 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # shared money/split/balance logic (68 tests, no emulator)
+npm test                 # pure logic in shared/ and web/ (105 tests, no emulator)
 npm run test:rules       # security rules vs the Firestore emulator (91 tests)
 npm run test:integration # functions + real client modules (53 tests)
 npm run test:all         # all of the above
