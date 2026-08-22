@@ -1,0 +1,232 @@
+rules_version = '2';
+
+// Expense Splitter security rules.
+//
+// Two invariants matter most:
+//   1. Clients NEVER write `balances`, `status`, or `uids` on a group. Those
+//      are function-owned. Balances are money; the client is not the source.
+//   2. An expense's `splits[].owedPaise` must sum to `amountPaise`.
+//      Rules have no fold over arrays, so the sum is unrolled up to
+//      MAX_SPLIT_ENTRIES members. `onExpenseWrite` re-checks it as a backstop.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function groupData(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId)).data;
+    }
+
+    function isMember(groupId) {
+      return isSignedIn() && uid() in groupData(groupId).uids;
+    }
+
+    function isCreator(groupId) {
+      return isSignedIn() && groupData(groupId).createdBy == uid();
+    }
+
+    function isActive(groupId) {
+      return groupData(groupId).status == 'active';
+    }
+
+    function memberUid(groupId, memberId) {
+      return get(/databases/$(database)/documents/groups/$(groupId)/members/$(memberId)).data.uid;
+    }
+
+    // ---------------------------------------------------------------- users
+
+    match /users/{userId} {
+      // A name the user picked for themselves, not whatever Google supplied.
+      function validProfile() {
+        return request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 40
+          && (request.resource.data.photoURL == null || request.resource.data.photoURL is string);
+      }
+
+      // Display name + avatar of people you share groups with.
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && uid() == userId && validProfile();
+      // createdAt is set once, at create.
+      allow update: if isSignedIn() && uid() == userId && validProfile()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['displayName', 'photoURL']);
+      allow delete: if false;
+    }
+
+    // ------------------------------------------- cross-group memberships
+
+    // The home page finds every group you belong to with ONE collectionGroup
+    // query over `members`. Collection-group queries are matched only by a
+    // recursive wildcard — the /groups/{groupId}/members rule further down does
+    // not apply to them. The condition pins this to your own slots, so
+    // `where('uid', '==', me)` is the only query that can satisfy it.
+    match /{path=**}/members/{memberId} {
+      allow read: if isSignedIn() && resource.data.uid == uid();
+    }
+
+    // --------------------------------------------------------------- groups
+
+    match /groups/{groupId} {
+      // Cheap array check against the mirror maintained by joinGroup.
+      allow read: if isSignedIn() && uid() in resource.data.uids;
+
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == uid()
+        && request.resource.data.uids == [uid()]
+        && request.resource.data.status == 'active'
+        && request.resource.data.currency == 'INR'
+        && request.resource.data.balances == {}
+        && request.resource.data.balancesZero == true
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.inviteToken is string
+        && request.resource.data.inviteToken.size() >= 20
+        && request.resource.data.inviteTokenExpiresAt is timestamp
+        // Function-owned lifecycle fields must not exist yet.
+        && !('lastExpenseAt' in request.resource.data)
+        && !('closedAt' in request.resource.data);
+
+      // Creator-only, and only the whitelisted fields. Notably NOT
+      // balances / status / uids / balancesZero / zeroSince / lastExpenseAt.
+      // Values are re-validated, not just the key set: whitelisting `name`
+      // without checking it would let the creator store anything under it.
+      allow update: if isSignedIn()
+        && resource.data.createdBy == uid()
+        && resource.data.status == 'active'
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['name', 'defaultSplit', 'inviteToken', 'inviteTokenExpiresAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.inviteToken is string
+        && request.resource.data.inviteToken.size() >= 20
+        && request.resource.data.inviteTokenExpiresAt is timestamp;
+
+      // deleteGroup callable only.
+      allow delete: if false;
+    }
+
+    // ------------------------------------------------- group event markers
+
+    // Idempotency markers written by onExpenseWrite. Not client business.
+    match /groups/{groupId}/_events/{eventId} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------- members
+
+    match /groups/{groupId}/members/{memberId} {
+      allow read: if isMember(groupId);
+
+      // Creator adds named, unclaimed slots. `uid` is joinGroup's to write.
+      allow create: if isCreator(groupId)
+        && isActive(groupId)
+        && request.resource.data.uid == null
+        && request.resource.data.claimedAt == null
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 40;
+
+      // Same value check as create — whitelisting the key is not enough.
+      function validSlotName() {
+        return request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 40;
+      }
+
+      allow update: if isActive(groupId) && validSlotName() && (
+        // Creator renames slots but can never claim or reassign one.
+        (isCreator(groupId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.claimedAt == resource.data.claimedAt
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoURL']))
+        // A claimer may rename their own slot — this is the name everyone else
+        // in the group sees, independent of their account name.
+        || (resource.data.uid == uid()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoURL']))
+      );
+
+      // Only empty slots can be removed; kicking a claimed member has to also
+      // shrink group.uids, so it belongs in a function.
+      allow delete: if isCreator(groupId) && isActive(groupId) && resource.data.uid == null;
+    }
+
+    // ------------------------------------------------------------- expenses
+
+    match /groups/{groupId}/expenses/{expenseId} {
+      // Rules cannot reduce over a list, so the sum is unrolled. Groups larger
+      // than this cap are rejected rather than left unverified.
+      function owedAt(i) {
+        return request.resource.data.splits.size() > i ? request.resource.data.splits[i].owedPaise : 0;
+      }
+
+      function splitsTotal() {
+        return owedAt(0) + owedAt(1) + owedAt(2) + owedAt(3) + owedAt(4)
+             + owedAt(5) + owedAt(6) + owedAt(7) + owedAt(8) + owedAt(9)
+             + owedAt(10) + owedAt(11) + owedAt(12) + owedAt(13) + owedAt(14)
+             + owedAt(15) + owedAt(16) + owedAt(17) + owedAt(18) + owedAt(19);
+      }
+
+      function wellFormed() {
+        return request.resource.data.amountPaise is int
+          && request.resource.data.amountPaise > 0
+          && request.resource.data.type in ['expense', 'settlement']
+          && request.resource.data.splitType in ['equal', 'amount', 'percent', 'portions']
+          && request.resource.data.receiptStatus in ['none', 'pending', 'uploaded', 'failed']
+          && request.resource.data.paidBy is string
+          && request.resource.data.description is string
+          && request.resource.data.description.size() <= 140
+          && request.resource.data.date is string
+          && request.resource.data.splits is list
+          && request.resource.data.splits.size() > 0
+          && request.resource.data.splits.size() <= 20
+          && splitsTotal() == request.resource.data.amountPaise;
+      }
+
+      // The payer owns the expense. While their slot is unclaimed, whoever
+      // recorded it owns it; ownership transfers the moment the slot is taken.
+      function ownsExpense() {
+        return memberUid(groupId, resource.data.paidBy) == uid()
+          || (memberUid(groupId, resource.data.paidBy) == null && resource.data.createdBy == uid());
+      }
+
+      allow read: if isMember(groupId);
+
+      allow create: if isMember(groupId)
+        && isActive(groupId)
+        && request.resource.data.createdBy == uid()
+        && wellFormed();
+
+      // Edits only while the group is open, and only by the owner.
+      allow update: if isMember(groupId)
+        && isActive(groupId)
+        && ownsExpense()
+        && wellFormed()
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      // Group creator gets a delete-only escape hatch for cleanup.
+      allow delete: if isMember(groupId)
+        && isActive(groupId)
+        && (ownsExpense() || isCreator(groupId));
+
+      // ----------------------------------------------------------- history
+
+      match /history/{editId} {
+        allow read: if isMember(groupId);
+        allow create: if isMember(groupId)
+          && isActive(groupId)
+          && request.resource.data.editedBy == uid();
+        allow update, delete: if false;
+      }
+    }
+  }
+}

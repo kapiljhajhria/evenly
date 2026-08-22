@@ -1,0 +1,33 @@
+rules_version = '2';
+
+// Receipts live at receipts/{groupId}/{expenseId}.{ext}. Group members only,
+// images only, and the path must point at a real expense in that group.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isMember(groupId) {
+      return request.auth != null
+        && request.auth.uid in firestore.get(/databases/(default)/documents/groups/$(groupId)).data.uids;
+    }
+
+    function expenseExists(groupId, expenseId) {
+      return firestore.exists(/databases/(default)/documents/groups/$(groupId)/expenses/$(expenseId));
+    }
+
+    match /receipts/{groupId}/{fileName} {
+      allow read: if isMember(groupId);
+
+      allow write: if isMember(groupId)
+        && expenseExists(groupId, fileName.split('[.]')[0])
+        && request.resource.contentType.matches('image/.*')
+        && request.resource.size <= 1 * 1024 * 1024;
+
+      // onExpenseWrite / deleteGroup handle removal.
+      allow delete: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

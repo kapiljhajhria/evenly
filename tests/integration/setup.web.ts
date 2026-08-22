@@ -1,0 +1,20 @@
+/**
+ * Minimal localStorage for the node test environment. The app guards its own
+ * access (web/src/lib/storage.ts), but the tests assert on the cached stamps,
+ * so they need somewhere real to land.
+ */
+const store = new Map<string, string>();
+
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, String(value)),
+    removeItem: (key: string) => void store.delete(key),
+    clear: () => store.clear(),
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() {
+      return store.size;
+    },
+  },
+});

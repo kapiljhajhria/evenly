@@ -1,0 +1,23 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-brand-50: oklch(0.97 0.02 240);
+  --color-brand-500: oklch(0.62 0.15 245);
+  --color-brand-600: oklch(0.55 0.16 248);
+  --color-brand-700: oklch(0.47 0.15 250);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+    /* Keep content clear of the iOS home indicator. */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* Amounts line up in columns only with tabular figures. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
