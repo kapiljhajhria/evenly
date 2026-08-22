@@ -268,8 +268,10 @@ describe('members', () => {
     await assertFails(updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'members', SLOT_ALICE), { name: 'Nope' }));
   });
 
-  it('lets the creator delete an unclaimed slot but not a claimed one', async () => {
-    await assertSucceeds(deleteDoc(doc(as(ALICE), 'groups', GROUP_ID, 'members', SLOT_GHOST)));
+  it('blocks slot deletion from the client entirely, claimed or not', async () => {
+    // removeMember has to prove the member appears in no expense and shrink
+    // group.uids — neither is expressible in rules.
+    await assertFails(deleteDoc(doc(as(ALICE), 'groups', GROUP_ID, 'members', SLOT_GHOST)));
     await assertFails(deleteDoc(doc(as(ALICE), 'groups', GROUP_ID, 'members', SLOT_BOB)));
   });
 });
@@ -337,6 +339,66 @@ describe('expenses: create', () => {
   it('rejects strangers outright', async () => {
     await assertFails(
       setDoc(doc(as(STRANGER), 'groups', GROUP_ID, 'expenses', 'e5'), expenseData({ createdBy: STRANGER })),
+    );
+  });
+});
+
+describe('expenses: fields added after launch', () => {
+  // The whole point of these being optional: data written before they existed
+  // must keep working, including through an edit, which sends the full doc.
+  it('accepts an expense with no note, time or location at all', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'legacy'), expenseData({ createdBy: BOB, paidBy: SLOT_BOB })),
+    );
+  });
+
+  it('still lets the payer edit an expense that predates these fields', async () => {
+    await seedExpense(env, 'old-shape', { paidBy: SLOT_BOB, createdBy: BOB });
+    await assertSucceeds(
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'old-shape'), { description: 'Renamed' }),
+    );
+  });
+
+  it('accepts explicit nulls', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'nulls'),
+        expenseData({ createdBy: BOB, paidBy: SLOT_BOB, note: null, time: null, location: null }),
+      ),
+    );
+  });
+
+  it('accepts a full note, time and location', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'full'),
+        expenseData({
+          createdBy: BOB,
+          paidBy: SLOT_BOB,
+          note: 'Split the biryani, Dev paid the tip separately',
+          time: '19:05',
+          location: { lat: 19.076, lng: 72.8777, accuracy: 12.5, name: null },
+        }),
+      ),
+    );
+  });
+
+  it.each([
+    ['a note past 500 chars', { note: 'x'.repeat(501) }],
+    ['a non-string note', { note: 42 }],
+    ['a 25-hour time', { time: '25:00' }],
+    ['a malformed time', { time: '7pm' }],
+    ['a time without a leading zero', { time: '9:05' }],
+    ['an out-of-range latitude', { location: { lat: 91, lng: 0, accuracy: null, name: null } }],
+    ['an out-of-range longitude', { location: { lat: 0, lng: 181, accuracy: null, name: null } }],
+    ['a non-numeric coordinate', { location: { lat: 'here', lng: 0, accuracy: null, name: null } }],
+    ['smuggled extra keys in location', { location: { lat: 0, lng: 0, accuracy: null, name: null, note: 'x'.repeat(600) } }],
+  ])('rejects %s', async (_label, patch) => {
+    await assertFails(
+      setDoc(
+        doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'bad'),
+        expenseData({ createdBy: BOB, paidBy: SLOT_BOB, ...patch }),
+      ),
     );
   });
 });

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
@@ -6,7 +5,6 @@ import { useExpenses } from '../../hooks/useExpenses.js';
 import { AppShell } from '../../components/Layout.js';
 import { Button, Card, ErrorNote, FullPageSpinner } from '../../components/ui.js';
 import { BalancePanel } from './BalancePanel.js';
-import { InviteSheet } from './InviteSheet.js';
 import { EditableGroupName } from './EditableGroupName.js';
 import { ExpenseList } from '../expense/ExpenseList.js';
 
@@ -16,7 +14,6 @@ export function GroupPage() {
   const { group, loading, error } = useGroup(groupId);
   const { members, byId } = useMembers(groupId);
   const { expenses, hasMore, loadMore, error: expensesError } = useExpenses(groupId);
-  const [showInvite, setShowInvite] = useState(false);
 
   if (loading) return <FullPageSpinner />;
   if (error || !group || !groupId) {
@@ -39,25 +36,17 @@ export function GroupPage() {
       }
       back="/"
       action={
-        <Button variant="ghost" onClick={() => setShowInvite((v) => !v)}>
-          {openSlots > 0 ? `Invite (${openSlots})` : 'Invite'}
-        </Button>
+        <Link to={`/group/${groupId}/members`}>
+          <Button variant="ghost">
+            {openSlots > 0 ? `Members (${openSlots} open)` : 'Members'}
+          </Button>
+        </Link>
       }
     >
       {!isActive && (
         <Card className="bg-slate-100 text-sm text-slate-600">
           This group is closed and read-only. Everything settled up.
         </Card>
-      )}
-
-      {showInvite && isActive && (
-        <InviteSheet
-          groupId={groupId}
-          groupName={group.name}
-          token={group.inviteToken}
-          expiresAt={group.inviteTokenExpiresAt}
-          isCreator={isCreator}
-        />
       )}
 
       <BalancePanel

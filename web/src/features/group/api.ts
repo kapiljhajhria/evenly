@@ -1,6 +1,5 @@
 import {
   addDoc,
-  deleteDoc,
   doc,
   serverTimestamp,
   setDoc,
@@ -35,6 +34,15 @@ export const deleteGroup = httpsCallable<{ groupId: string }, { groupId: string;
   functions,
   'deleteGroup',
 );
+
+/**
+ * Creator-only. Rejects unless the member appears in no expense at all — a
+ * check that needs a collection scan, so it cannot live in the rules.
+ */
+export const removeMember = httpsCallable<
+  { groupId: string; memberId: string },
+  { memberId: string; name: string; wasClaimed: boolean }
+>(functions, 'removeMember');
 
 export interface CreateGroupInput {
   name: string;
@@ -115,11 +123,6 @@ export async function addMemberSlot(groupId: string, name: string): Promise<stri
 
 export async function renameMember(groupId: string, memberId: string, name: string): Promise<void> {
   await updateDoc(memberDoc(groupId, memberId), { name: name.trim() });
-}
-
-/** Only unclaimed slots can be removed from the client — see firestore.rules. */
-export async function removeSlot(groupId: string, memberId: string): Promise<void> {
-  await deleteDoc(memberDoc(groupId, memberId));
 }
 
 /** Invalidates every outstanding invite link. Plain field update, no function. */

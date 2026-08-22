@@ -70,6 +70,11 @@ ENV
 Copy the values from the console — do not hand-type the bucket name. Projects
 created recently use `.firebasestorage.app`; older ones use `.appspot.com`.
 
+`npm run build` refuses to run if any of these are missing, or if the project id
+still starts with `demo-`. Without that guard a missing key compiles to
+`undefined`, the build succeeds, and the first thing you see is
+`auth/invalid-api-key` in the browser console of a site you already deployed.
+
 ## 7. Check it before shipping it
 
 ```bash
@@ -103,11 +108,84 @@ The first `deploy:functions` asks to enable Cloud Build, Artifact Registry,
 Cloud Run, Eventarc, Pub/Sub and Cloud Scheduler. Say yes to all — `autoClose`
 is a scheduled function and `onExpenseWrite` is an Eventarc trigger.
 
+## Prompts you will be asked, and what to answer
+
+The CLI is interactive on a first deploy. None of these are trick questions,
+but two of them cost money if you get them wrong.
+
+| Command | Prompt | Answer | Why |
+|---|---|---|---|
+| `firebase login` | Allow Firebase to collect CLI usage and error reporting? | either | Telemetry only. |
+| `deploy:rules` | Cloud Storage needs an IAM Role to use cross-service rules. Grant the new role? | **Yes** | `storage.rules` calls `firestore.get()` to check group membership. Without the role, every receipt upload is denied. |
+| `deploy:functions` | API `[…]` not enabled. Enable and retry? | **Yes** | Repeats for Cloud Build, Artifact Registry, Cloud Run, Eventarc, Pub/Sub and Cloud Scheduler. All are required. |
+| `deploy:functions` | How many days do you want to keep container images before they're deleted? `(1)` | **`1`** | See below — this is the only line item likely to show up on your bill. |
+| `deploy:functions` | Functions found in your project but not in local source. Proceed with deletion? | **No**, unless you deleted them on purpose | Answering yes removes live functions. |
+
+### The container image cleanup prompt
+
+Every function deploy builds a container image and pushes it to Artifact
+Registry. Nothing deletes the old ones by default, so they pile up with every
+deploy — roughly 100–400 MB each, times five functions, times every deploy you
+ever run.
+
+Artifact Registry gives 0.5 GB free and then bills for storage. At this app's
+scale it is the **only** service likely to leave the free tier — not Functions,
+not Firestore, not Scheduler. Answering `1` sets a policy that deletes images
+older than a day. It does not affect running functions; those images are build
+artifacts, not the live runtime.
+
+If you already dismissed the prompt, set it after the fact:
+
+```bash
+npx firebase functions:artifacts:setpolicy --location asia-south1 --days 1 --force
+```
+
+### What actually costs money here
+
+| Service | Free allowance | This app at friends-group scale |
+|---|---|---|
+| Cloud Functions (2nd gen) | 2M invocations/month, scales to zero | free — no idle instances |
+| Cloud Firestore | 50K reads + 20K writes/day | free |
+| Cloud Scheduler | 3 jobs/month | free — `autoClose` is 1 job |
+| Eventarc / Pub/Sub | generous free tier | free at this volume |
+| Artifact Registry | 0.5 GB | **the one to watch** — set the cleanup policy |
+| Hosting | 10 GB storage, 360 MB/day transfer | free |
+
+Set a budget alert regardless (§1). Prices change; confirm against the
+[pricing page](https://firebase.google.com/pricing) and your own billing
+console rather than this table.
+
+## First 2nd-gen deploy: Eventarc permission error
+
+```
+Validation failed for trigger …: Permission denied while using the Eventarc
+Service Agent … Since this is your first time using 2nd gen functions, we need
+a little bit longer to finish setting everything up.
+```
+
+This is a propagation race, not a misconfiguration. The Eventarc service agent
+is created during the deploy that then immediately tries to use it. Only
+`onExpenseWrite` hits it, because it is the only Eventarc-triggered function —
+the three callables and the scheduled job deploy fine.
+
+Wait two or three minutes, then redeploy just that one:
+
+```bash
+npx firebase deploy --only functions:onExpenseWrite
+```
+
+**Do not skip this.** `onExpenseWrite` is what maintains `balances`. Without it
+expenses save but every balance stays at zero forever.
+
+If it still fails after a few retries, grant the role explicitly in the Google
+Cloud console → IAM → find the `service-<PROJECT_NUMBER>@gcp-sa-eventarc`
+principal → add **Eventarc Service Agent**.
+
 ## 9. Verify
 
 ```bash
-npx firebase hosting:channel:list
-npx firebase functions:list
+npx firebase firestore:indexes          # confirm the members(uid) override landed
+npx firebase functions:list             # all FIVE must be listed
 npx firebase functions:log --only onExpenseWrite
 ```
 
@@ -121,6 +199,21 @@ Then open `https://YOUR_PROJECT_ID.web.app` and walk the real path:
    claim a slot
 5. Settle up → balances go to exactly zero
 
+## Deploying a change to a live app
+
+Order matters when rules and client code change together. Rules first: a client
+that sends a new field before the rules accept it gets PERMISSION_DENIED,
+whereas rules that accept a field nobody sends yet are harmless.
+
+```bash
+npm run deploy:rules       # accept the new shape first
+npm run deploy:functions   # then new/changed callables
+npm run deploy:hosting     # then the client that uses them
+```
+
+New callables (`removeMember`) do not exist until `deploy:functions` finishes,
+so shipping hosting first gives users a button that 404s.
+
 ## Redeploying
 
 ```bash
@@ -132,11 +225,57 @@ npm run deploy:rules       # after touching firestore.rules or storage.rules
 `shared/` is bundled into both, so a change there needs **both** hosting and
 functions redeployed or the client and server will disagree about split math.
 
+## Troubleshooting
+
+**`this index is not necessary, configure using single field index controls`**
+
+A *single-field* index cannot live in the `indexes` array — that array is only
+for multi-field composites. The home page's collection-group query on
+`members.uid` is a single field, so it belongs in `fieldOverrides`:
+
+```json
+{
+  "collectionGroup": "members",
+  "fieldPath": "uid",
+  "indexes": [
+    { "order": "ASCENDING",  "queryScope": "COLLECTION" },
+    { "order": "DESCENDING", "queryScope": "COLLECTION" },
+    { "order": "ASCENDING",  "queryScope": "COLLECTION_GROUP" }
+  ]
+}
+```
+
+The two `COLLECTION` entries are not padding. A field override **replaces**
+Firestore's automatic single-field indexing for that field, so omitting them
+would break `joinGroup`'s `members.where('uid', '==', me)` — a collection-scoped
+query — while fixing the home page.
+
+**`The query requires an index` at runtime**
+
+The error message contains a console link that builds the exact index. Click it,
+then copy the resulting definition back into `firestore.indexes.json` so the
+next deploy does not drop it. The auto-close index shape is the likely
+candidate — it filters on two inequality fields.
+
+**`auth/invalid-api-key` in the deployed app**
+
+`web/.env.production.local` was missing or incomplete when you ran the build, so
+the Firebase config compiled to `undefined`. Create the file (§6) and redeploy
+hosting. `npm run build` now fails fast on this rather than shipping it.
+
+**Emulators do not enforce indexes.** Every query works locally whether or not
+an index exists, so index problems only ever surface against a real project.
+Walk the verification steps in §9 after any index change.
+
 ## Notes
 
 - **Custom domain**: Hosting → Add custom domain. Then
   Authentication → Settings → Authorized domains → add it, or Google sign-in
   will fail on the new domain.
+- **Icons** live in `web/public/` and are generated by
+  `python3 web/scripts/generate-icons.py` (needs Pillow). The PNGs are
+  committed, so the build does not depend on that script — rerun it only if you
+  change the mark in `favicon.svg`.
 - **Storage rules are deployed but unexercised** — the receipt upload UI is not
   built yet (brief §9 step 5). Nothing writes to Storage until it is.
 - **`autoClose` runs daily at 03:00 IST.** It will not touch groups that never

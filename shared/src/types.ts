@@ -48,6 +48,21 @@ export interface SplitEntry extends SplitInput {
   owedPaise: Paise;
 }
 
+/**
+ * Where an expense happened. Optional and additive — expenses recorded before
+ * this existed simply have no `location`.
+ *
+ * `name` is reserved for a reverse-geocoded label. It is always null today; the
+ * field exists so adding place names later needs no migration.
+ */
+export interface ExpenseLocation {
+  lat: number;
+  lng: number;
+  /** Metres, straight from the Geolocation API. Null if the device withheld it. */
+  accuracy: number | null;
+  name: string | null;
+}
+
 export interface DefaultSplit {
   type: 'portions';
   entries: { memberId: MemberId; portions: number }[];
@@ -88,9 +103,22 @@ export interface Member<TS = TimestampLike> {
 
 export interface Expense<TS = TimestampLike> {
   type: ExpenseType;
+  /** Short title, shown in the expense list. */
   description: string;
+  /**
+   * Longer free text, shown when the expense is opened. Optional: absent on
+   * everything recorded before notes existed.
+   */
+  note?: string | null;
   /** Calendar date of the expense, `YYYY-MM-DD`. Distinct from createdAt. */
   date: string;
+  /**
+   * Local time of day, `HH:mm`, 24-hour. Optional and deliberately NOT part of
+   * the sort key — a Firestore orderBy excludes documents missing the field, so
+   * ordering by `time` would hide every expense recorded before it existed.
+   */
+  time?: string | null;
+  location?: ExpenseLocation | null;
   amountPaise: Paise;
   /** Exactly one payer. Multi-payer is deliberately not supported. */
   paidBy: MemberId;

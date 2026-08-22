@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { formatPaise, netFor, suggestSettlements } from '@app/shared';
+import { formatPaise, localDateString, localTimeString, netFor, suggestSettlements } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { addSettlement } from './api.js';
 import { AppShell } from '../../components/Layout.js';
 import { Button, Card, EmptyState, ErrorNote, FullPageSpinner } from '../../components/ui.js';
-
-const today = (): string => new Date().toISOString().slice(0, 10);
 
 /**
  * Settlements are trust-based: you pay over UPI outside the app, then record
@@ -40,7 +38,10 @@ export function SettleUpPage() {
         fromMemberId: from,
         toMemberId: to,
         amountPaise,
-        date: today(),
+        // Local, not UTC: toISOString() would record yesterday between
+        // midnight and 05:30 IST.
+        date: localDateString(),
+        time: localTimeString(),
         createdBy: user.uid,
       });
       navigate(`/group/${groupId}`, { replace: true });

@@ -42,8 +42,8 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 
 ```bash
 npm test                 # shared money/split/balance logic (68 tests, no emulator)
-npm run test:rules       # security rules vs the Firestore emulator (74 tests)
-npm run test:integration # functions + real client modules (20 tests)
+npm run test:rules       # security rules vs the Firestore emulator (87 tests)
+npm run test:integration # functions + real client modules (35 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
 ```
@@ -91,6 +91,13 @@ workspace-only version spec is unresolvable from the public registry.
   `/groups/{groupId}/members/{memberId}` rule does not match it — that takes the
   recursive-wildcard rule near the top of `firestore.rules`, plus the
   collection-group index in `firestore.indexes.json`.
+- **Fields added after launch are optional, always.** `note`, `time` and
+  `location` on an expense are validated as "absent OR null OR valid". An
+  update sends the whole document, so requiring any of them would have locked
+  every expense recorded before they existed.
+- **Never re-key the expense sort.** The list orders by `date, createdAt`. A
+  Firestore `orderBy` silently excludes documents missing that field, so
+  sorting by `time` would hide every expense that predates it.
 - **Two different names, on purpose.** `users/{uid}.displayName` is your account
   name — it seeds new groups and nothing else. `members/{memberId}.name` is your
   slot name in one group, and it is what everyone else sees there. Renaming one
@@ -110,6 +117,10 @@ workspace-only version spec is unresolvable from the public registry.
 Done: repo scaffold, emulator wiring, auth, group creation, invite + claim flow,
 all four split types, `onExpenseWrite` balances, home page, settlements, rules
 tests.
+
+Also done since launch: group rename, user profile + per-group slot names,
+members page (add/remove slots), expense notes, time-of-day, and optional
+location capture with a Google Maps link.
 
 Next, per the brief §9: receipts (crop → WebP → background upload with retry),
 PDF export, `deleteGroup` UI, close flow + `autoClose` UI, PWA polish, then FCM

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import type { SplitType } from '@app/shared';
-import { parseRupeesToPaise } from '@app/shared';
+import { localDateString, localTimeString, MAX_NOTE_LENGTH, parseRupeesToPaise } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { addExpense } from './api.js';
 import { SplitEditor } from './SplitEditor.js';
+import { LocationField } from './LocationField.js';
+import { useLocationCapture } from './useLocation.js';
 import { AppShell } from '../../components/Layout.js';
 import { Button, ErrorNote, Field, FullPageSpinner, Input } from '../../components/ui.js';
-
-const today = (): string => new Date().toISOString().slice(0, 10);
 
 export function AddExpensePage() {
   const { id: groupId } = useParams<{ id: string }>();
@@ -19,13 +19,17 @@ export function AddExpensePage() {
   const { members, loading: membersLoading } = useMembers(groupId);
 
   const [description, setDescription] = useState('');
+  const [note, setNote] = useState('');
   const [amountRaw, setAmountRaw] = useState('');
-  const [date, setDate] = useState(today);
+  // Both default to right now, and both stay editable.
+  const [date, setDate] = useState(localDateString);
+  const [time, setTime] = useState(localTimeString);
   const [paidBy, setPaidBy] = useState<string>('');
   const [splitType, setSplitType] = useState<SplitType>('equal');
   const [splitValue, setSplitValue] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const locationCapture = useLocationCapture();
 
   const amountPaise = useMemo(() => parseRupeesToPaise(amountRaw) ?? 0, [amountRaw]);
   const myMemberId = members.find((m) => m.uid === user?.uid)?.id;
@@ -54,7 +58,10 @@ export function AddExpensePage() {
       await addExpense({
         groupId,
         description,
+        note,
         date,
+        time,
+        location: locationCapture.location,
         amountPaise,
         paidBy,
         splitType,
@@ -77,18 +84,28 @@ export function AddExpensePage() {
           <Input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={140} required autoFocus />
         </Field>
 
+        <Field label="Amount (₹)">
+          <Input
+            inputMode="decimal"
+            value={amountRaw}
+            onChange={(e) => setAmountRaw(e.target.value)}
+            placeholder="0.00"
+            required
+          />
+        </Field>
+
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Amount (₹)">
+          <Field label="Date">
             <Input
-              inputMode="decimal"
-              value={amountRaw}
-              onChange={(e) => setAmountRaw(e.target.value)}
-              placeholder="0.00"
+              type="date"
+              value={date}
+              max={localDateString()}
+              onChange={(e) => setDate(e.target.value)}
               required
             />
           </Field>
-          <Field label="Date">
-            <Input type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} required />
+          <Field label="Time">
+            <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
           </Field>
         </div>
 
@@ -104,6 +121,21 @@ export function AddExpensePage() {
               </option>
             ))}
           </select>
+        </Field>
+
+        <Field label="Notes" hint="Optional. Anything worth remembering about this expense.">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={MAX_NOTE_LENGTH}
+            rows={3}
+            className="w-full rounded-xl border-0 bg-white p-3 text-base ring-1 ring-slate-200 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-brand-500"
+            placeholder="Dev covered the tip separately…"
+          />
+        </Field>
+
+        <Field label="Location">
+          <LocationField capture={locationCapture} />
         </Field>
 
         <SplitEditor

@@ -154,9 +154,11 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoURL']))
       );
 
-      // Only empty slots can be removed; kicking a claimed member has to also
-      // shrink group.uids, so it belongs in a function.
-      allow delete: if isCreator(groupId) && isActive(groupId) && resource.data.uid == null;
+      // removeMember callable only. Deleting a slot requires proving the member
+      // appears in no expense anywhere — a whole-collection check rules cannot
+      // do — and unclaiming also has to shrink group.uids, which clients may
+      // never write.
+      allow delete: if false;
     }
 
     // ------------------------------------------------------------- expenses
@@ -175,8 +177,39 @@ service cloud.firestore {
              + owedAt(15) + owedAt(16) + owedAt(17) + owedAt(18) + owedAt(19);
       }
 
+      // Fields added after the app shipped. Every one is checked as
+      // "absent OR null OR valid" — an expense recorded before they existed
+      // must still be editable, and an edit sends the whole document.
+      function validNote() {
+        return !('note' in request.resource.data)
+          || request.resource.data.note == null
+          || (request.resource.data.note is string && request.resource.data.note.size() <= 500);
+      }
+
+      function validTime() {
+        return !('time' in request.resource.data)
+          || request.resource.data.time == null
+          || (request.resource.data.time is string
+              && request.resource.data.time.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$'));
+      }
+
+      function validLocation() {
+        return !('location' in request.resource.data)
+          || request.resource.data.location == null
+          || (request.resource.data.location.lat is number
+              && request.resource.data.location.lat >= -90
+              && request.resource.data.location.lat <= 90
+              && request.resource.data.location.lng is number
+              && request.resource.data.location.lng >= -180
+              && request.resource.data.location.lng <= 180
+              && request.resource.data.location.keys().hasOnly(['lat', 'lng', 'accuracy', 'name']));
+      }
+
       function wellFormed() {
-        return request.resource.data.amountPaise is int
+        return validNote()
+          && validTime()
+          && validLocation()
+          && request.resource.data.amountPaise is int
           && request.resource.data.amountPaise > 0
           && request.resource.data.type in ['expense', 'settlement']
           && request.resource.data.splitType in ['equal', 'amount', 'percent', 'portions']

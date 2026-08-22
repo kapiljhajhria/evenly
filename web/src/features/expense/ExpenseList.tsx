@@ -1,14 +1,21 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { Expense, Member, WithId } from '@app/shared';
-import { formatPaise } from '@app/shared';
+import { formatPaise, formatTime } from '@app/shared';
 import { Avatar, Button, EmptyState, Money } from '../../components/ui.js';
 import { deleteExpense, expensePermissions } from './api.js';
+import { MapLink } from './LocationField.js';
 
 function formatDate(date: string): string {
   const parsed = new Date(`${date}T00:00:00`);
   return Number.isNaN(parsed.getTime())
     ? date
     : parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+/** "22 Aug · 7:05 pm" — the time half is skipped on expenses that predate it. */
+function formatWhen(expense: Expense<Timestamp>): string {
+  const time = formatTime(expense.time);
+  return time ? `${formatDate(expense.date)} · ${time}` : formatDate(expense.date);
 }
 
 export function ExpenseList({
@@ -36,6 +43,8 @@ export function ExpenseList({
     return <EmptyState title="Nothing here yet" body="Add the first expense and balances start moving." />;
   }
 
+  const nameOf = (memberId: string): string => membersById[memberId]?.name ?? 'Removed member';
+
   return (
     <div className="space-y-2">
       <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
@@ -50,43 +59,90 @@ export function ExpenseList({
             groupActive,
           });
           const isSettlement = expense.type === 'settlement';
-          const receiver = isSettlement ? membersById[expense.splits[0]?.memberId ?? '']?.name : null;
+          const receiver = isSettlement ? nameOf(expense.splits[0]?.memberId ?? '') : null;
+          const hasDetail = Boolean(expense.note) || Boolean(expense.location) || !isSettlement;
 
           return (
-            <li key={expense.id} className="flex items-start gap-3 p-3">
-              <Avatar name={payer?.name ?? '?'} photoURL={payer?.photoURL} className="size-9" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">
-                  {isSettlement ? `${payer?.name ?? 'Someone'} paid ${receiver ?? 'someone'}` : expense.description}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {formatDate(expense.date)}
-                  {!isSettlement && ` · ${payer?.name ?? 'Someone'} paid`}
-                  {expense.receiptStatus === 'failed' && (
-                    <span className="ml-1 text-amber-600">· receipt upload failed</span>
+            <li key={expense.id}>
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-start gap-3 p-3 hover:bg-slate-50">
+                  <Avatar name={payer?.name ?? '?'} photoURL={payer?.photoURL} className="size-9" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">
+                      {isSettlement
+                        ? `${payer?.name ?? 'Someone'} paid ${receiver ?? 'someone'}`
+                        : expense.description}
+                    </p>
+                    <p className="flex flex-wrap items-center gap-x-1 text-xs text-slate-500">
+                      <span>{formatWhen(expense)}</span>
+                      {!isSettlement && <span>· {payer?.name ?? 'Someone'} paid</span>}
+                      {expense.note && <span aria-label="has a note">· 📝</span>}
+                      {expense.location && <span aria-label="has a location">· 📍</span>}
+                      {expense.receiptStatus === 'failed' && (
+                        <span className="text-amber-600">· receipt upload failed</span>
+                      )}
+                      {expense.receiptStatus === 'pending' && (
+                        <span className="text-slate-400">· uploading receipt</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <Money paise={expense.amountPaise} className="font-semibold" />
+                    {!isSettlement && myShare && (
+                      <p className="text-xs text-slate-400">{formatPaise(myShare.owedPaise)} yours</p>
+                    )}
+                  </div>
+                  {hasDetail && (
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="mt-1 size-4 shrink-0 text-slate-300 transition group-open:rotate-180"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden
+                    >
+                      <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
                   )}
-                  {expense.receiptStatus === 'pending' && <span className="ml-1 text-slate-400">· uploading receipt</span>}
-                </p>
-              </div>
-              <div className="text-right">
-                <Money paise={expense.amountPaise} className="font-semibold" />
-                {!isSettlement && myShare && (
-                  <p className="text-xs text-slate-400">{formatPaise(myShare.owedPaise)} yours</p>
-                )}
-                {canDelete && (
-                  <button
-                    type="button"
-                    className="text-xs text-slate-400 underline underline-offset-2 hover:text-red-600"
-                    onClick={() => {
-                      if (confirm('Delete this entry? Balances update straight away.')) {
-                        void deleteExpense(groupId, expense.id);
-                      }
-                    }}
-                  >
-                    delete
-                  </button>
-                )}
-              </div>
+                </summary>
+
+                <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 px-3 py-3 pl-15">
+                  {expense.note && (
+                    <p className="text-sm whitespace-pre-wrap text-slate-600">{expense.note}</p>
+                  )}
+
+                  {expense.location && (
+                    <div className="text-sm">
+                      <MapLink location={expense.location} />
+                    </div>
+                  )}
+
+                  {!isSettlement && (
+                    <ul className="space-y-1 text-sm">
+                      {expense.splits.map((split) => (
+                        <li key={split.memberId} className="flex justify-between gap-3">
+                          <span className="truncate text-slate-500">{nameOf(split.memberId)}</span>
+                          <span className="tabular text-slate-600">{formatPaise(split.owedPaise)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {canDelete && (
+                    <button
+                      type="button"
+                      className="text-xs text-slate-400 underline underline-offset-2 hover:text-red-600"
+                      onClick={() => {
+                        if (confirm('Delete this entry? Balances update straight away.')) {
+                          void deleteExpense(groupId, expense.id);
+                        }
+                      }}
+                    >
+                      Delete this entry
+                    </button>
+                  )}
+                </div>
+              </details>
             </li>
           );
         })}
