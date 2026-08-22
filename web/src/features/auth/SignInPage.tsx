@@ -34,7 +34,7 @@ export function SignInPage() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 p-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold">Expense Splitter</h1>
+        <h1 className="text-2xl font-bold">Evenly</h1>
         <p className="text-sm text-slate-500">Split the bill, settle over UPI, stay friends.</p>
       </div>
 

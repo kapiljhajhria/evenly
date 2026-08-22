@@ -24,7 +24,7 @@ export function InviteSheet({
   const expired = expiresAt.toMillis() <= Date.now();
 
   const share = async () => {
-    const text = `Join "${groupName}" on Expense Splitter`;
+    const text = `Join "${groupName}" on Evenly`;
     if (navigator.share) {
       try {
         await navigator.share({ title: groupName, text, url });

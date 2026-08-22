@@ -1,4 +1,4 @@
-# Expense Splitter
+# Evenly
 
 Mobile-first PWA for splitting expenses among friend groups, INR-only, hosted
 entirely on Firebase. See [`expense-splitter-project-brief.md`](./expense-splitter-project-brief.md)

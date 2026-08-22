@@ -54,8 +54,8 @@ export default defineConfig(({ command, mode }) => {
         registerType: 'prompt',
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         manifest: {
-          name: 'Expense Splitter',
-          short_name: 'Splitter',
+          name: 'Evenly',
+          short_name: 'Evenly',
           description: 'Split expenses with your friends. Settle up over UPI.',
           theme_color: '#0f172a',
           background_color: '#ffffff',
