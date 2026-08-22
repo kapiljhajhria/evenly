@@ -1,15 +1,9 @@
-import {
-  addDoc,
-  deleteDoc,
-  doc,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  type Timestamp,
-} from 'firebase/firestore';
-import type { Expense, ExpenseLocation, ExpenseType, SplitEntry, SplitType, WithId } from '@app/shared';
+import { addDoc, deleteDoc, serverTimestamp, type Timestamp } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../lib/firebase.js';
+import type { Expense, ExpenseLocation, ExpenseType, SplitType } from '@app/shared';
 import { assertSplitsValid, computeSplits, settlementSplits } from '@app/shared';
-import { expenseDoc, expensesCol, historyCol } from '../../lib/paths.js';
+import { expenseDoc, expensesCol } from '../../lib/paths.js';
 
 export interface NewExpenseInput {
   groupId: string;
@@ -85,75 +79,29 @@ export async function addSettlement(args: {
   return ref.id;
 }
 
-const HISTORY_FIELDS = [
-  'description', 'note', 'date', 'time', 'location',
-  'amountPaise', 'paidBy', 'splitType', 'splits',
-] as const;
-
-export interface UpdateExpenseInput {
-  groupId: string;
-  expenseId: string;
-  before: WithId<Expense<Timestamp>>;
-  editedBy: string;
-  changes: {
-    description?: string;
-    note?: string | null;
-    date?: string;
-    time?: string | null;
-    location?: ExpenseLocation | null;
-    amountPaise?: number;
-    paidBy?: string;
-    splitType?: SplitType;
-    splitInputs?: { memberId: string; input: number }[];
-  };
+export interface UpdateExpenseChanges {
+  description?: string;
+  note?: string | null;
+  date?: string;
+  time?: string | null;
+  location?: ExpenseLocation | null;
+  amountPaise?: number;
+  paidBy?: string;
+  splitType?: SplitType;
+  splitInputs?: { memberId: string; input: number }[];
 }
 
 /**
- * Edit + history snapshot. Written as two docs from the client today; if the
- * `updateExpense` callable lands (brief §3, open item), swap the body for a
- * call and lock client updates in the rules — callers stay unchanged.
+ * Edits go through a callable so the edit and its history snapshot land in one
+ * transaction — rules cannot require that two documents are written together,
+ * so a client-side edit could skip the history entry. Splits are recomputed
+ * server-side from the raw inputs using the same shared code this form previews
+ * with. Direct client updates are locked to the receipt fields.
  */
-export async function updateExpense(input: UpdateExpenseInput): Promise<void> {
-  const { before, changes } = input;
-  const amountPaise = changes.amountPaise ?? before.amountPaise;
-  const splitType = changes.splitType ?? before.splitType;
-
-  let splits: SplitEntry[] = before.splits;
-  if (changes.splitInputs || changes.amountPaise !== undefined || changes.splitType) {
-    const inputs = changes.splitInputs ?? before.splits.map((s) => ({ memberId: s.memberId, input: s.input }));
-    splits = computeSplits(amountPaise, splitType, inputs);
-  }
-  assertSplitsValid(amountPaise, splits);
-
-  const next = {
-    description: changes.description?.trim() ?? before.description,
-    // `?? null` rather than `?? before.x`: these are optional, and an expense
-    // written before they existed has no value to fall back to.
-    note: changes.note !== undefined ? changes.note?.trim() || null : before.note ?? null,
-    date: changes.date ?? before.date,
-    time: changes.time !== undefined ? changes.time || null : before.time ?? null,
-    location: changes.location !== undefined ? changes.location : before.location ?? null,
-    amountPaise,
-    paidBy: changes.paidBy ?? before.paidBy,
-    splitType,
-    splits,
-    updatedAt: serverTimestamp(),
-  };
-
-  const changed = HISTORY_FIELDS.filter(
-    (field) => JSON.stringify(next[field]) !== JSON.stringify(before[field]),
-  );
-  if (changed.length === 0) return;
-
-  // `?? null` keeps undefined out of the snapshot — Firestore rejects it.
-  const snapshot = Object.fromEntries(changed.map((field) => [field, before[field] ?? null]));
-  await setDoc(doc(historyCol(input.groupId, input.expenseId)), {
-    editedBy: input.editedBy,
-    editedAt: serverTimestamp(),
-    before: snapshot,
-  });
-  await updateDoc(expenseDoc(input.groupId, input.expenseId), next);
-}
+export const updateExpense = httpsCallable<
+  { groupId: string; expenseId: string; changes: UpdateExpenseChanges },
+  { changed: string[] }
+>(functions, 'updateExpense');
 
 export async function deleteExpense(groupId: string, expenseId: string): Promise<void> {
   await deleteDoc(expenseDoc(groupId, expenseId));

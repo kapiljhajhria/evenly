@@ -352,10 +352,10 @@ describe('expenses: fields added after launch', () => {
     );
   });
 
-  it('still lets the payer edit an expense that predates these fields', async () => {
+  it('still accepts a receipt patch on an expense that predates these fields', async () => {
     await seedExpense(env, 'old-shape', { paidBy: SLOT_BOB, createdBy: BOB });
     await assertSucceeds(
-      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'old-shape'), { description: 'Renamed' }),
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'old-shape'), { receiptStatus: 'pending' }),
     );
   });
 
@@ -418,39 +418,52 @@ describe('expenses: ownership', () => {
     });
   });
 
-  it('lets the payer edit even when someone else recorded it', async () => {
-    await assertSucceeds(
+  it('blocks content edits from the client even by the payer', async () => {
+    // updateExpense owns this path so the history snapshot cannot be skipped.
+    await assertFails(
       updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), { description: 'Late dinner' }),
     );
   });
 
-  it('blocks the recorder from editing once the payer is a real user', async () => {
-    await assertFails(
-      updateDoc(doc(as(ALICE), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), { description: 'Sneaky' }),
-    );
+  it.each([
+    ['description', { description: 'Sneaky' }],
+    ['amountPaise', { amountPaise: 50000 }],
+    ['paidBy', { paidBy: SLOT_ALICE }],
+    ['createdBy', { createdBy: BOB }],
+    ['note', { note: 'added quietly' }],
+  ])('blocks a client patch of %s', async (_label, patch) => {
+    await assertFails(updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), patch));
   });
 
-  it('lets the recorder edit while the payer slot is unclaimed', async () => {
+  it('still lets the payer patch receipt fields directly', async () => {
+    // The upload runs in the background after saving and retries on failure,
+    // so it must not need a round trip through a function.
     await assertSucceeds(
-      updateDoc(doc(as(ALICE), 'groups', GROUP_ID, 'expenses', 'paid-by-ghost'), { description: 'Ghost paid' }),
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), {
+        receiptStatus: 'uploaded',
+        receiptPath: `receipts/${GROUP_ID}/paid-by-bob.webp`,
+      }),
     );
   });
 
-  it('blocks another member from editing an unclaimed-payer expense', async () => {
-    await assertFails(
-      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-ghost'), { description: 'Not mine' }),
+  it('lets the recorder patch receipts while the payer slot is unclaimed', async () => {
+    await assertSucceeds(
+      updateDoc(doc(as(ALICE), 'groups', GROUP_ID, 'expenses', 'paid-by-ghost'), { receiptStatus: 'failed' }),
     );
   });
 
-  it('blocks rewriting createdBy through an edit', async () => {
+  it('blocks a non-owner from touching receipt fields', async () => {
     await assertFails(
-      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), { createdBy: BOB }),
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-ghost'), { receiptStatus: 'failed' }),
     );
   });
 
-  it('blocks an edit that breaks the sum invariant', async () => {
+  it('blocks smuggling a money change alongside a receipt patch', async () => {
     await assertFails(
-      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), { amountPaise: 50000 }),
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), {
+        receiptStatus: 'uploaded',
+        amountPaise: 1,
+      }),
     );
   });
 
@@ -480,8 +493,8 @@ describe('closed groups are read-only', () => {
     );
   });
 
-  it('blocks edits by the payer', async () => {
-    await assertFails(updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'old'), { description: 'Reopened' }));
+  it('blocks even a receipt patch by the payer', async () => {
+    await assertFails(updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'old'), { receiptStatus: 'failed' }));
   });
 
   it('blocks deletes by the creator', async () => {
@@ -502,20 +515,21 @@ describe('history and internals', () => {
     await seedExpense(env, 'e-hist', { paidBy: SLOT_BOB, createdBy: BOB });
   });
 
-  it('lets the payer append a history snapshot', async () => {
-    await assertSucceeds(
+  it('blocks clients writing history at all — updateExpense owns it', async () => {
+    await assertFails(
       setDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'e-hist', 'history', 'h1'), {
         editedBy: BOB, editedAt: Timestamp.now(), before: { description: 'Dinner' },
       }),
     );
   });
 
-  it('blocks forging someone else as the editor', async () => {
-    await assertFails(
-      setDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'e-hist', 'history', 'h2'), {
-        editedBy: ALICE, editedAt: Timestamp.now(), before: { description: 'Dinner' },
-      }),
-    );
+  it('lets any member read history', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'groups', GROUP_ID, 'expenses', 'e-hist', 'history', 'h0'), {
+        editedBy: BOB, editedAt: Timestamp.now(), before: { description: 'Dinner' },
+      });
+    });
+    await assertSucceeds(getDoc(doc(as(ALICE), 'groups', GROUP_ID, 'expenses', 'e-hist', 'history', 'h0')));
   });
 
   it('makes history append-only', async () => {

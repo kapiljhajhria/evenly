@@ -1,6 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { Expense, Member, WithId } from '@app/shared';
 import { formatPaise, formatTime } from '@app/shared';
+import { Link } from 'react-router';
 import { Avatar, Button, EmptyState, Money } from '../../components/ui.js';
 import { deleteExpense, expensePermissions } from './api.js';
 import { MapLink } from './LocationField.js';
@@ -51,7 +52,7 @@ export function ExpenseList({
         {expenses.map((expense) => {
           const payer = membersById[expense.paidBy];
           const myShare = expense.splits.find((s) => s.memberId === myMemberId);
-          const { canDelete } = expensePermissions({
+          const { canEdit, canDelete } = expensePermissions({
             expense,
             payerUid: payer?.uid,
             uid,
@@ -60,7 +61,8 @@ export function ExpenseList({
           });
           const isSettlement = expense.type === 'settlement';
           const receiver = isSettlement ? nameOf(expense.splits[0]?.memberId ?? '') : null;
-          const hasDetail = Boolean(expense.note) || Boolean(expense.location) || !isSettlement;
+          const hasDetail =
+            Boolean(expense.note) || Boolean(expense.location) || canEdit || canDelete || !isSettlement;
 
           return (
             <li key={expense.id}>
@@ -128,19 +130,35 @@ export function ExpenseList({
                     </ul>
                   )}
 
-                  {canDelete && (
-                    <button
-                      type="button"
-                      className="text-xs text-slate-400 underline underline-offset-2 hover:text-red-600"
-                      onClick={() => {
-                        if (confirm('Delete this entry? Balances update straight away.')) {
-                          void deleteExpense(groupId, expense.id);
-                        }
-                      }}
+                  <div className="flex items-center gap-4 text-xs">
+                    {canEdit && (
+                      <Link
+                        to={`/group/${groupId}/expense/${expense.id}`}
+                        className="font-medium text-brand-600 hover:underline"
+                      >
+                        Edit
+                      </Link>
+                    )}
+                    <Link
+                      to={`/group/${groupId}/expense/${expense.id}`}
+                      className="text-slate-400 underline underline-offset-2 hover:text-slate-600"
                     >
-                      Delete this entry
-                    </button>
-                  )}
+                      History
+                    </Link>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        className="text-slate-400 underline underline-offset-2 hover:text-red-600"
+                        onClick={() => {
+                          if (confirm('Delete this entry? Balances update straight away.')) {
+                            void deleteExpense(groupId, expense.id);
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
                 </div>
               </details>
             </li>

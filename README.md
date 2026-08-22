@@ -42,8 +42,8 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 
 ```bash
 npm test                 # shared money/split/balance logic (68 tests, no emulator)
-npm run test:rules       # security rules vs the Firestore emulator (87 tests)
-npm run test:integration # functions + real client modules (35 tests)
+npm run test:rules       # security rules vs the Firestore emulator (91 tests)
+npm run test:integration # functions + real client modules (53 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
 ```
@@ -91,6 +91,12 @@ workspace-only version spec is unresolvable from the public registry.
   `/groups/{groupId}/members/{memberId}` rule does not match it — that takes the
   recursive-wildcard rule near the top of `firestore.rules`, plus the
   collection-group index in `firestore.indexes.json`.
+- **Expense edits go through the `updateExpense` callable.** Rules cannot
+  require that two documents are written together, so a client-side edit could
+  update the expense and skip the history entry, leaving the record decorative.
+  The callable writes both in one transaction and recomputes splits server-side.
+  Direct client writes are locked to the receipt fields, which the background
+  upload needs.
 - **Fields added after launch are optional, always.** `note`, `time` and
   `location` on an expense are validated as "absent OR null OR valid". An
   update sends the whole document, so requiring any of them would have locked
@@ -119,8 +125,9 @@ all four split types, `onExpenseWrite` balances, home page, settlements, rules
 tests.
 
 Also done since launch: group rename, user profile + per-group slot names,
-members page (add/remove slots), expense notes, time-of-day, and optional
-location capture with a Google Maps link.
+members page (add/remove slots), expense notes, time-of-day, optional location
+capture with a Google Maps link, and expense editing with enforced, visible
+edit history.
 
 Next, per the brief §9: receipts (crop → WebP → background upload with retry),
 PDF export, `deleteGroup` UI, close flow + `autoClose` UI, PWA polish, then FCM

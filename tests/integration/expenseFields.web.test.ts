@@ -11,7 +11,7 @@ import { addDoc, getDoc, getDocs, serverTimestamp } from 'firebase/firestore';
 import type { Expense, WithId } from '@app/shared';
 import { computeSplits, mapsUrl } from '@app/shared';
 import { auth, usingEmulators } from '../../web/src/lib/firebase.js';
-import { expenseDoc, expensesCol, membersCol } from '../../web/src/lib/paths.js';
+import { expenseDoc, expensesCol, historyCol, membersCol } from '../../web/src/lib/paths.js';
 import { createGroup } from '../../web/src/features/group/api.js';
 import { addExpense, updateExpense } from '../../web/src/features/expense/api.js';
 
@@ -72,13 +72,7 @@ describe('expenses recorded before note/time/location existed', () => {
 
   it('can still be edited — the whole point of the fields being optional', async () => {
     const id = await addLegacyExpense();
-    await updateExpense({
-      groupId,
-      expenseId: id,
-      before: await read(id),
-      editedBy: user.uid,
-      changes: { description: 'Old dinner, renamed' },
-    });
+    await updateExpense({ groupId, expenseId: id, changes: { description: 'Old dinner, renamed' } });
     expect((await read(id)).description).toBe('Old dinner, renamed');
   });
 
@@ -87,8 +81,6 @@ describe('expenses recorded before note/time/location existed', () => {
     await updateExpense({
       groupId,
       expenseId: id,
-      before: await read(id),
-      editedBy: user.uid,
       changes: { note: 'Remembered later: Riya paid the parking' },
     });
     const expense = await read(id);
@@ -96,6 +88,21 @@ describe('expenses recorded before note/time/location existed', () => {
     // Editing one optional field must not invent values for the others.
     expect(expense.time).toBeNull();
     expect(expense.location).toBeNull();
+  });
+
+  it('can have a time added to it later', async () => {
+    const id = await addLegacyExpense();
+    await updateExpense({ groupId, expenseId: id, changes: { time: '20:15' } });
+    expect((await read(id)).time).toBe('20:15');
+  });
+
+  it('can have its amount corrected later', async () => {
+    const id = await addLegacyExpense();
+    await updateExpense({ groupId, expenseId: id, changes: { amountPaise: 35000 } });
+    const expense = await read(id);
+    expect(expense.amountPaise).toBe(35000);
+    // Splits are recomputed server-side, so the invariant still holds.
+    expect(expense.splits.reduce((t, s) => t + s.owedPaise, 0)).toBe(35000);
   });
 });
 
@@ -151,15 +158,9 @@ describe('new expenses carry the new fields', () => {
       splitInputs: [{ memberId: mySlot, input: 1 }],
       createdBy: user.uid,
     });
-    await updateExpense({
-      groupId,
-      expenseId: id,
-      before: await read(id),
-      editedBy: user.uid,
-      changes: { note: 'second note' },
-    });
+    await updateExpense({ groupId, expenseId: id, changes: { note: 'second note' } });
 
-    const { historyCol } = await import('../../web/src/lib/paths.js');
+    // Any member can read history — that is the point of keeping it.
     const history = await getDocs(historyCol(groupId, id));
     expect(history.size).toBe(1);
     expect(history.docs[0]?.data()['before']['note']).toBe('first note');

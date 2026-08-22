@@ -212,8 +212,14 @@ npm run deploy:functions   # then new/changed callables
 npm run deploy:hosting     # then the client that uses them
 ```
 
-New callables (`removeMember`) do not exist until `deploy:functions` finishes,
-so shipping hosting first gives users a button that 404s.
+New callables (`removeMember`, `updateExpense`) do not exist until
+`deploy:functions` finishes, so shipping hosting first gives users a button
+that 404s.
+
+Rules that *remove* a client capability are the exception to rules-first: the
+expense update rule now allows only receipt patches, so deploying it before the
+functions would break editing for anyone mid-session. In practice deploy all
+three back to back.
 
 ## Redeploying
 
