@@ -63,16 +63,7 @@ integration tests do share the dev project, but only ever add to it.
 
 ## Deploying
 
-One-time:
-
-1. Create a Firebase project on the **Blaze** plan (Functions + Storage need it).
-2. Put its id in `.firebaserc` under `projects.default`.
-3. Enable **Google** and **Email/Password** sign-in providers.
-4. Create Firestore and Storage in `asia-south1` (functions are pinned to that
-   region in `functions/src/common.ts` and `web/src/lib/firebase.ts`).
-5. Copy the web app config into `web/.env.local`.
-
-Then:
+See [DEPLOY.md](./DEPLOY.md) for the full first-time walkthrough. Once set up:
 
 ```bash
 npm run deploy            # rules, indexes, functions, hosting
@@ -81,9 +72,10 @@ npm run deploy:functions
 npm run deploy:hosting
 ```
 
-`functions` is bundled by esbuild into a single `lib/index.cjs` with
-`@app/shared` inlined — that is what makes npm workspaces safe to deploy, since
-the uploaded folder needs no workspace resolution.
+`functions` is bundled by esbuild into a single `lib/index.cjs` with the shared
+math inlined via an alias — `@app/shared` deliberately does not appear in
+`functions/package.json`, because that file is uploaded verbatim and a
+workspace-only version spec is unresolvable from the public registry.
 
 ## Conventions that matter
 

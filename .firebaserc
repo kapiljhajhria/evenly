@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "evenly-3b82e",
+    "emulator": "demo-expense-splitter"
+  }
+}
