@@ -46,6 +46,15 @@ export function useLocationCapture(initial: ExpenseLocation | null = null): Loca
       setError('This browser cannot share a location.');
       return;
     }
+    // Geolocation needs a secure context. Browsers report this as a plain
+    // permission denial, which reads as "you said no" when the real cause is
+    // the URL — exactly what happens testing the dev server from a phone over
+    // http://192.168.x.x. localhost counts as secure; a LAN IP does not.
+    if (!window.isSecureContext) {
+      setStatus('unavailable');
+      setError('Location needs a secure connection. Open the app over HTTPS or on localhost.');
+      return;
+    }
     setStatus('locating');
     setError(null);
     navigator.geolocation.getCurrentPosition(
