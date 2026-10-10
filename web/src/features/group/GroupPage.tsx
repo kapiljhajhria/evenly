@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useAuth } from '../../hooks/useAuth.js';
+import { useOnline } from '../../hooks/useOnline.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { useComments, useDeletedExpenses, useExpenses, useUnconfirmedExpenses } from '../../hooks/useExpenses.js';
 import { isDeleted } from '@app/shared';
 import { AppShell } from '../../components/Layout.js';
-import { Button, Card, ErrorNote, FullPageSpinner } from '../../components/ui.js';
+import { Button, Card, EmptyState, ErrorNote, FullPageSpinner } from '../../components/ui.js';
 import { BalancePanel } from './BalancePanel.js';
 import { EditableGroupName } from './EditableGroupName.js';
 import { ExpenseList } from '../expense/ExpenseList.js';
@@ -20,6 +21,7 @@ export function GroupPage() {
   const { id: groupId } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { group, loading, error } = useGroup(groupId);
+  const online = useOnline();
   const { members, byId } = useMembers(groupId);
   const { expenses, hasMore, loadMore, error: expensesError } = useExpenses(groupId);
   const comments = useComments(groupId);
@@ -59,6 +61,15 @@ export function GroupPage() {
   }, [markSeen, groupId]);
   const activitySince = useActivitySince(groupId, since && since.groupId === groupId ? since.ms : null);
 
+  // Offline and not loaded: the doc reads as missing, which would otherwise
+  // say "This group is not available to you".
+  if (!online && (loading || !group)) {
+    return (
+      <AppShell title="Group" back="/">
+        <EmptyState title="You're offline" body="This group will load as soon as you're connected again." />
+      </AppShell>
+    );
+  }
   if (loading) return <FullPageSpinner />;
   if (error || !group || !groupId) {
     return (

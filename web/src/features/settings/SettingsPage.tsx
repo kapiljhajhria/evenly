@@ -4,6 +4,7 @@ import { AppShell } from '../../components/Layout.js';
 import { Card } from '../../components/ui.js';
 import { usePreferences } from '../../stores/preferences.js';
 import { NotificationsCard } from '../notifications/NotificationsCard.js';
+import { InstallSettings } from '../install/InstallCard.js';
 
 /** A fixed sample, so every option shows the same day and is easy to compare. */
 const SAMPLE = '2026-08-15';
@@ -13,6 +14,7 @@ export function SettingsPage() {
 
   return (
     <AppShell title="Settings" back="/">
+      <InstallSettings />
       <NotificationsCard />
 
       <Card className="space-y-4">

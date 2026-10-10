@@ -140,6 +140,22 @@ workspace-only version spec is unresolvable from the public registry.
   pushes silently. Under the emulator nothing is sent: messages land in
   `_pushLog` for the tests. `PWA_DEV=1 npm run dev` runs the service worker in
   development.
+- **Offline: the app opens, data does not.** The service worker serves the
+  app offline; Firestore stays on its in-memory cache on purpose (with
+  IndexedDB persistence, writes made right after a reload hung 25s+ in
+  testing — see `web/src/lib/firebase.ts`). Offline, screens say so and
+  save buttons are disabled; everything catches up on reconnect.
+- **Lazy export chunks must stay lazy.** jsPDF, canvg, pdf-lib & co. are
+  kept out of the precache, so the app's startup must never import them —
+  a `manualChunks` entry once dragged a shared helper into pdf-lib and made
+  every offline launch a blank page. `lazyChunksStayLazy()` in
+  `vite.config.ts` now fails the build if that happens. Name such chunks via
+  `chunkFileNames`, not `manualChunks`.
+- **`npm run build:e2e -w web`** builds the real installed app against the
+  emulators (`web/.env.e2e`, demo project only; the build guard refuses it
+  for a real project). Serve with `npx vite preview` in `web/` to test
+  install, offline and the service worker. Never deploy it — `deploy:hosting`
+  rebuilds for production first.
 - **Fields added after launch are optional, always.** `note`, `time` and
   `location` on an expense are validated as "absent OR null OR valid". An
   update sends the whole document, so requiring any of them would have locked
@@ -187,7 +203,9 @@ a `pending` older than 15 minutes is shown as failed), client-side PDF export
 Also done: close flow — a "settled up, closes around …" card, creator-only
 Close now / Reopen (`setGroupClosed`; reopening restarts the quiet week so the
 nightly `autoClose` does not re-close it), and a day's notice before
-auto-close. The timing rules live in `shared/src/lifecycle.ts`.
+auto-close. The timing rules live in `shared/src/lifecycle.ts`. Install
+prompt (one tap on Android/desktop, Share-sheet steps on iPhone) on the home
+page and in Settings, and an honest offline mode.
 
 Next, per the brief §9: close flow + `autoClose` UI, PWA polish, then FCM
 push in v1.5.

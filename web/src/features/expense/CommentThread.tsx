@@ -5,6 +5,7 @@ import { formatDateTimeOf, MAX_COMMENT_LENGTH } from '@app/shared';
 import { Avatar, Button } from '../../components/ui.js';
 import { addComment, deleteComment } from './api.js';
 import { useDisplayDateFormat } from '../../stores/preferences.js';
+import { useOnline } from '../../hooks/useOnline.js';
 import { commentBoxId } from './UnconfirmedNotice.js';
 
 /**
@@ -30,6 +31,7 @@ export function CommentThread({
   groupActive: boolean;
 }) {
   const dateFormat = useDisplayDateFormat();
+  const online = useOnline();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,11 +97,11 @@ export function CommentThread({
             onChange={(e) => setText(e.target.value)}
             maxLength={MAX_COMMENT_LENGTH}
             rows={1}
-            placeholder={comments.length > 0 ? 'Reply…' : 'Add a comment…'}
+            placeholder={!online ? 'Offline — comments need a connection' : comments.length > 0 ? 'Reply…' : 'Add a comment…'}
             aria-label="Comment"
             className="min-h-11 flex-1 resize-y rounded-xl border-0 bg-white px-3 py-2.5 text-sm ring-1 ring-slate-200 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-brand-500"
           />
-          <Button type="submit" variant="secondary" busy={busy} disabled={text.trim() === ''}>
+          <Button type="submit" variant="secondary" busy={busy} disabled={text.trim() === '' || !online}>
             Post
           </Button>
         </form>

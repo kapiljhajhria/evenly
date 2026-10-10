@@ -1,4 +1,5 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+import type { OutputChunk } from 'rollup';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -42,7 +43,19 @@ function assertProductionEnv(mode: string, envDir: string): void {
     );
   }
 
-  if (env['VITE_FIREBASE_PROJECT_ID']?.startsWith('demo-')) {
+  const demoProject = env['VITE_FIREBASE_PROJECT_ID']?.startsWith('demo-') ?? false;
+  const emulatorBuild = env['VITE_USE_EMULATORS'] === 'true';
+  // A build wired to the emulators must be a demo project — never let a real
+  // deploy point every user at localhost.
+  if (emulatorBuild && !demoProject) {
+    throw new Error(
+      `\n\nVITE_USE_EMULATORS=true is only for local test builds against a demo- project.\n` +
+        `Remove it from the environment before building for real.\n`,
+    );
+  }
+  // ...and a demo project is only buildable as such a test build
+  // (`npm run build:e2e`), never by accident.
+  if (demoProject && !emulatorBuild) {
     throw new Error(
       `\n\nRefusing to build against the emulator project ` +
         `"${env['VITE_FIREBASE_PROJECT_ID']}".\n` +
@@ -52,12 +65,51 @@ function assertProductionEnv(mode: string, envDir: string): void {
   }
 }
 
+/** Chunks kept out of the precache because they load only when exporting. */
+const LAZY_ONLY = /^assets\/(jspdf|html2canvas|purify|canvg|pdf-lib)/;
+
+/**
+ * Fail the build if the app's startup code statically imports one of the
+ * lazy-only chunks. Such a chunk is not precached, so a static import means a
+ * blank page offline (and a big download on every start). This happened once,
+ * silently, via a manual chunk; it should never ship again.
+ */
+function lazyChunksStayLazy(): Plugin {
+  return {
+    name: 'evenly:lazy-chunks-stay-lazy',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const chunks = new Map(
+        Object.values(bundle)
+          .filter((item): item is OutputChunk => item.type === 'chunk')
+          .map((chunk) => [chunk.fileName, chunk]),
+      );
+      for (const entry of [...chunks.values()].filter((chunk) => chunk.isEntry)) {
+        const seen = new Set<string>();
+        const visit = (fileName: string, path: string[]) => {
+          if (seen.has(fileName)) return;
+          seen.add(fileName);
+          if (LAZY_ONLY.test(fileName)) {
+            this.error(
+              `${[...path, fileName].join(' → ')}: the app's startup imports a lazy-only chunk. ` +
+                `It is not precached, so the app would show a blank page offline.`,
+            );
+          }
+          for (const next of chunks.get(fileName)?.imports ?? []) visit(next, [...path, fileName]);
+        };
+        visit(entry.fileName, []);
+      }
+    },
+  };
+}
+
 export default defineConfig(({ command, mode }) => {
   const envDir = process.cwd();
   if (command === 'build') assertProductionEnv(mode, envDir);
 
   return {
     plugins: [
+      lazyChunksStayLazy(),
       react(),
       tailwindcss(),
       VitePWA({
@@ -114,10 +166,21 @@ export default defineConfig(({ command, mode }) => {
               'firebase/functions',
               'firebase/storage',
             ],
-            // Named so the precache can exclude them; both load lazily.
-            canvg: ['canvg'],
-            'pdf-lib': ['pdf-lib'],
+            // NOT canvg or pdf-lib. A manual chunk drags shared helpers in
+            // with it (Rollup's commonjs helper landed in whichever one came
+            // first), which made the app's entry statically import a big
+            // lazy-only chunk — downloaded on every start, and, being kept out
+            // of the precache, a blank page offline. lazyChunksStayLazy()
+            // fails the build if that ever happens again.
           },
+          // Name the lazy export chunks so the precache can exclude them,
+          // without changing what goes into them.
+          chunkFileNames: (chunk) =>
+            chunk.facadeModuleId?.includes('/node_modules/pdf-lib/')
+              ? 'assets/pdf-lib-[hash].js'
+              : chunk.facadeModuleId?.includes('/node_modules/canvg/')
+                ? 'assets/canvg-[hash].js'
+                : 'assets/[name]-[hash].js',
         },
       },
       chunkSizeWarningLimit: 900,

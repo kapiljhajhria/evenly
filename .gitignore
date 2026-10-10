@@ -6,6 +6,7 @@ dist/
 .env.*
 !.env.example
 !.env.development
+!.env.e2e
 .firebase/
 firebase-debug.log*
 firestore-debug.log*

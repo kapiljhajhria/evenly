@@ -22,6 +22,12 @@ export const db = initializeFirestore(app, {
   // Long-polling auto-detect keeps onSnapshot alive behind restrictive proxies
   // and inside in-app webviews.
   experimentalAutoDetectLongPolling: true,
+  // Deliberately the default in-memory cache, NOT persistentLocalCache.
+  // Tested 2026-10-11: with IndexedDB persistence (multi- or single-tab, with
+  // or without long-polling auto-detect), a write made right after a page
+  // reload hung for 25s+ in most runs — the reloaded client replays the
+  // previous one's unacknowledged writes first. Offline browsing is not worth
+  // a "Save expense" that spins. Revisit with a real-backend test.
 });
 export const functions = getFunctions(app, FUNCTIONS_REGION);
 export const storage = getStorage(app);
@@ -31,7 +37,11 @@ export const storage = getStorage(app);
 storage.maxUploadRetryTime = 30_000;
 
 export const usingEmulators =
-  import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS !== 'false';
+  // `VITE_USE_EMULATORS=true` also lets a production BUILD talk to the
+  // emulators — only ever with a demo- project (see vite.config.ts), for
+  // testing the installed/offline app locally.
+  import.meta.env.VITE_USE_EMULATORS === 'true' ||
+  (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS !== 'false');
 
 if (usingEmulators) {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });

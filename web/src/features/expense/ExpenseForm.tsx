@@ -10,6 +10,7 @@ import {
 } from '@app/shared';
 import { Button, ErrorNote, Field, Input } from '../../components/ui.js';
 import { DateField } from '../../components/DateField.js';
+import { OFFLINE_HINT, useOnline } from '../../hooks/useOnline.js';
 import { SplitEditor } from './SplitEditor.js';
 import { LocationField } from './LocationField.js';
 import { useLocationCapture } from './useLocation.js';
@@ -101,6 +102,7 @@ export function ExpenseForm({
   const [receipt, setReceipt] = useState<EncodedReceipt | null>(null);
   const [unconfirmed, setUnconfirmed] = useState(initial?.unconfirmed ?? false);
   const [busy, setBusy] = useState(false);
+  const online = useOnline();
   const [error, setError] = useState<string | null>(null);
 
   const locationCapture = useLocationCapture(initial?.location ?? null);
@@ -138,6 +140,7 @@ export function ExpenseForm({
     description.trim() !== '' &&
     paidBy !== '' &&
     !(settlementMode && payment.error) &&
+    online &&
     !busy;
 
   return (
@@ -248,6 +251,7 @@ export function ExpenseForm({
       )}
 
       <ErrorNote>{error}</ErrorNote>
+      {!online && <p className="text-center text-xs text-slate-500">{OFFLINE_HINT}</p>}
       <Button type="submit" busy={busy} disabled={!canSubmit} className="w-full">
         {submitLabel}
       </Button>

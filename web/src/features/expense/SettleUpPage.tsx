@@ -9,6 +9,7 @@ import {
   suggestSettlements,
 } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
+import { OFFLINE_HINT, useOnline } from '../../hooks/useOnline.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { addSettlement } from './api.js';
 import { AppShell } from '../../components/Layout.js';
@@ -36,6 +37,7 @@ export function SettleUpPage() {
   const { group, loading } = useGroup(groupId);
   const { members } = useMembers(groupId);
   const [busy, setBusy] = useState<string | null>(null);
+  const online = useOnline();
   const [error, setError] = useState<string | null>(null);
 
   const [from, setFrom] = useState('');
@@ -64,7 +66,7 @@ export function SettleUpPage() {
     ? paymentWarning(balances, from, to, amountPaise, nameOf)
     : null;
   const canRecord =
-    from !== '' && to !== '' && from !== to && amountPaise > 0 && partsError === null && busy === null;
+    from !== '' && to !== '' && from !== to && amountPaise > 0 && partsError === null && busy === null && online;
 
   const record = async (
     key: string,
@@ -117,6 +119,7 @@ export function SettleUpPage() {
       </p>
 
       <ErrorNote>{error}</ErrorNote>
+      {!online && <p className="text-sm text-slate-500">{OFFLINE_HINT}</p>}
 
       {group.status !== 'active' ? (
         <EmptyState title="This group is closed" body="Closed groups are read-only." />
@@ -155,7 +158,7 @@ export function SettleUpPage() {
                         </div>
                         <Button
                           busy={busy === key}
-                          disabled={busy !== null}
+                          disabled={busy !== null || !online}
                           onClick={() => void record(key, transfer.from, transfer.to, transfer.amountPaise)}
                         >
                           Record

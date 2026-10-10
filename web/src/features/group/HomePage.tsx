@@ -2,15 +2,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { netFor } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
+import { useOnline } from '../../hooks/useOnline.js';
 import { useMyGroups } from '../../hooks/useMyGroups.js';
 import { AppShell } from '../../components/Layout.js';
 import { Avatar, Button, Card, EmptyState, ErrorNote, Money, Spinner } from '../../components/ui.js';
 import { NewActivityPill } from '../activity/WhatsNew.js';
 import { setAppBadge } from '../activity/badge.js';
+import { InstallCard } from '../install/InstallCard.js';
 
 export function HomePage() {
   const { user, displayName, photoURL } = useAuth();
   const { groups, loading, error } = useMyGroups(user?.uid);
+  const online = useOnline();
 
   // Each group's pill reports its count; the total goes on the app icon
   // (installed app, where the platform supports badges — iOS 16.4+ included).
@@ -50,8 +53,16 @@ export function HomePage() {
       }
     >
       <ErrorNote>{error?.message}</ErrorNote>
+      <InstallCard />
 
-      {loading ? (
+      {/* Offline with nothing loaded, Firestore answers with an EMPTY result
+          from its (in-memory) cache — which would read as "No groups yet". */}
+      {!online && (loading || groups.length === 0) ? (
+        <EmptyState
+          title="You're offline"
+          body="Your groups will appear as soon as you're connected again."
+        />
+      ) : loading ? (
         <div className="flex justify-center py-10 text-slate-400"><Spinner className="size-6" /></div>
       ) : groups.length === 0 ? (
         <EmptyState
