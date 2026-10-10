@@ -71,15 +71,23 @@ export default defineConfig(({ command, mode }) => {
             { src: 'pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           ],
         },
-        workbox: {
-          navigateFallbackDenylist: [/^\/__/],
+        // Our own service worker (src/sw.ts) rather than a generated one, so it
+        // can receive push notifications. It reproduces the generated
+        // behaviour: precache, index.html fallback outside /__/, and wait for
+        // SKIP_WAITING from the update ticker.
+        strategies: 'injectManifest',
+        srcDir: 'src',
+        filename: 'sw.ts',
+        injectManifest: {
           globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
           // PDF export and the libraries jsPDF pulls in (~750KB), plus pdf-lib
           // for merging PDF bills, load only when someone exports. Precaching
           // them would make every user download them on every update.
           globIgnores: ['**/jspdf*', '**/html2canvas*', '**/purify*', '**/canvg*', '**/pdf-lib*'],
         },
-        devOptions: { enabled: false },
+        // Off in normal development. `PWA_DEV=1 npm run dev` turns it on, to
+        // try push and offline behaviour against the emulators.
+        devOptions: { enabled: process.env['PWA_DEV'] === '1', type: 'module', navigateFallback: 'index.html' },
       }),
     ],
     server: { port: 5173, host: true },

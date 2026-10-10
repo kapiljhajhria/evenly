@@ -41,9 +41,9 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (200 tests, no emulator)
-npm run test:rules       # Firestore + Storage rules vs the emulators (157 tests)
-npm run test:integration # functions + real client modules (82 tests)
+npm test                 # pure logic in shared/ and web/ (214 tests, no emulator)
+npm run test:rules       # Firestore + Storage rules vs the emulators (166 tests)
+npm run test:integration # functions + real client modules (89 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
 ```
@@ -131,6 +131,15 @@ workspace-only version spec is unresolvable from the public registry.
   feed `features/activity/activity.ts`. Your own actions never count. The
   group page captures the previous visit before marking it seen — a
   mark-seen that runs first (React's dev double-mount) would hide everything.
+- **Push notifications go only to the people an event involves.** Recipients
+  and wording live in `shared/src/notify.ts`; `functions/src/push.ts` reads
+  each person's `settings/notifications` and `devices`, sends data-only FCM
+  messages, and deletes tokens FCM reports dead. The service worker is our own
+  (`web/src/sw.ts`, injectManifest) and builds every notification itself —
+  always showing one, because iOS revokes web push from apps that receive
+  pushes silently. Under the emulator nothing is sent: messages land in
+  `_pushLog` for the tests. `PWA_DEV=1 npm run dev` runs the service worker in
+  development.
 - **Fields added after launch are optional, always.** `note`, `time` and
   `location` on an expense are validated as "absent OR null OR valid". An
   update sends the whole document, so requiring any of them would have locked

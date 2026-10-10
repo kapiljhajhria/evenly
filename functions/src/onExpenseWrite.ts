@@ -2,7 +2,8 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import type { BalanceMap, Expense, Group } from '@app/shared';
-import { applyDelta, isDeleted, isSettledUp, splitsAreValid, writeDelta } from '@app/shared';
+import { applyDelta, isDeleted, isSettledUp, notificationsForCreate, notificationsForDelete, splitsAreValid, writeDelta } from '@app/shared';
+import { deliver, groupFacts } from './push.js';
 import { bucket, db, groupRef } from './common.js';
 
 /** Idempotency markers live long enough to cover a retry storm, then TTL away. */
@@ -83,6 +84,23 @@ export const onExpenseWrite = onDocumentWritten('groups/{groupId}/expenses/{expe
   if (!applied) {
     logger.info('skipped duplicate or orphaned expense event', { groupId, expenseId, eventId: event.id });
     return;
+  }
+
+  // Push notifications — after the balance transaction, and only for an
+  // event applied for the first time, so a redelivered trigger does not
+  // notify twice. Only creations and soft deletes; edits would be noise.
+  const created = !rawBefore && rawAfter && !isDeleted(rawAfter);
+  const softDeleted = rawBefore && !isDeleted(rawBefore) && rawAfter && isDeleted(rawAfter);
+  if (created || softDeleted) {
+    const facts = await groupFacts(groupId);
+    if (facts && rawAfter) {
+      const expense = { ...rawAfter, id: expenseId };
+      await deliver(
+        created
+          ? notificationsForCreate(facts, expense, rawAfter.createdBy)
+          : notificationsForDelete(facts, expense, rawAfter.deletedBy ?? ''),
+      );
+    }
   }
 
   // Folded-in receipt cleanup: removing or replacing a receipt deletes the old

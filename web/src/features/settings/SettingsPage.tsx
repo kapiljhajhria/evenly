@@ -3,6 +3,7 @@ import { DATE_FORMATS, DEFAULT_DISPLAY_DATE_FORMAT, DEFAULT_INPUT_DATE_FORMAT, f
 import { AppShell } from '../../components/Layout.js';
 import { Card } from '../../components/ui.js';
 import { usePreferences } from '../../stores/preferences.js';
+import { NotificationsCard } from '../notifications/NotificationsCard.js';
 
 /** A fixed sample, so every option shows the same day and is easy to compare. */
 const SAMPLE = '2026-08-15';
@@ -12,6 +13,8 @@ export function SettingsPage() {
 
   return (
     <AppShell title="Settings" back="/">
+      <NotificationsCard />
+
       <Card className="space-y-4">
         <div>
           <p className="font-semibold">Dates</p>

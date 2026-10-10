@@ -4,3 +4,4 @@ export { updateExpense } from './updateExpense.js';
 export { removeMember } from './removeMember.js';
 export { deleteGroup } from './deleteGroup.js';
 export { autoClose } from './autoClose.js';
+export { onCommentCreated, sendTestNotification } from './notifications.js';

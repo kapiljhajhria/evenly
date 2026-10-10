@@ -144,7 +144,10 @@ describe('removeMember', () => {
     await addExpense(SLOT_PAYER, [SLOT_OWNER, SLOT_PAYER]);
     const call = await callFunction('removeMember', creator, { groupId, memberId: SLOT_PAYER });
     expect(call.ok).toBe(false);
-    expect(call.message).toMatch(/paid for something/);
+    // Either refusal is right, and which one fires is a race: before the
+    // balance trigger lands it is "paid for something", after it is "still has
+    // a balance". What matters is the refusal and that the slot survives.
+    expect(call.message).toMatch(/paid for something|balance to settle/);
     expect(await memberExists(SLOT_PAYER)).toBe(true);
   });
 

@@ -760,6 +760,51 @@ describe('last-seen markers', () => {
   });
 });
 
+describe('push devices and notification settings', () => {
+  const device = (uid: string, owner = uid, id = 'd1') => doc(as(uid), 'users', owner, 'devices', id);
+  const prefs = (uid: string, owner = uid) => doc(as(uid), 'users', owner, 'settings', 'notifications');
+  const ok = { token: 'fcm-token-abc', platform: 'android', updatedAt: serverTimestamp() };
+
+  it('lets you register, refresh, read and remove your own device', async () => {
+    await assertSucceeds(setDoc(device(BOB), ok));
+    await assertSucceeds(setDoc(device(BOB), { ...ok, token: 'rotated' }));
+    await assertSucceeds(getDoc(device(BOB)));
+    await assertSucceeds(deleteDoc(device(BOB)));
+  });
+
+  it('keeps devices private', async () => {
+    await assertSucceeds(setDoc(device(BOB), ok));
+    await assertFails(getDoc(device(ALICE, BOB)));
+    await assertFails(setDoc(device(ALICE, BOB, 'd2'), ok));
+    await assertFails(deleteDoc(device(ALICE, BOB)));
+  });
+
+  it.each([
+    ['an empty token', { token: '' }],
+    ['an unknown platform', { platform: 'fridge' }],
+    ['a client-chosen time', { updatedAt: Timestamp.now() }],
+    ['extra fields', { pushedTo: 'everyone' }],
+  ])('rejects a device with %s', async (_label, overrides) => {
+    await assertFails(setDoc(device(BOB), { ...ok, ...overrides }));
+  });
+
+  it('lets you set your own notification choices, and nobody else', async () => {
+    await assertSucceeds(setDoc(prefs(BOB), { comments: false, expenses: true }));
+    await assertSucceeds(getDoc(prefs(BOB)));
+    await assertFails(getDoc(prefs(ALICE, BOB)));
+    await assertFails(setDoc(prefs(ALICE, BOB), { comments: false }));
+  });
+
+  it('rejects unknown kinds or non-boolean values', async () => {
+    await assertFails(setDoc(prefs(BOB), { marketing: true }));
+    await assertFails(setDoc(prefs(BOB), { comments: 'off' }));
+  });
+
+  it('allows no other settings documents', async () => {
+    await assertFails(setDoc(doc(as(BOB), 'users', BOB, 'settings', 'other'), { comments: false }));
+  });
+});
+
 describe('history and internals', () => {
   beforeEach(async () => {
     await seedExpense(env, 'e-hist', { paidBy: SLOT_BOB, createdBy: BOB });

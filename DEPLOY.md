@@ -65,6 +65,8 @@ VITE_FIREBASE_PROJECT_ID=YOUR_PROJECT_ID
 VITE_FIREBASE_STORAGE_BUCKET=YOUR_PROJECT_ID.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000
 VITE_FIREBASE_APP_ID=1:000000000000:web:abc123
+# Push notifications — see "Push notifications (one-time)" below.
+VITE_FIREBASE_VAPID_KEY=BExample...
 ENV
 ```
 
@@ -125,6 +127,27 @@ gcloud storage buckets describe gs://YOUR_BUCKET --format="default(cors_config)"
 `YOUR_BUCKET` is `VITE_FIREBASE_STORAGE_BUCKET` from step 6. `storage.cors.json`
 allows GET from the two hosting domains and `localhost:5173`; add any custom
 domain you serve the app from.
+
+### Push notifications (one-time)
+
+Push needs a web-push key pair (VAPID) for the project. Without it the app
+works as before and Settings just says notifications are not set up.
+
+1. Firebase console → **Project settings** → **Cloud Messaging** tab.
+2. Under **Web configuration → Web Push certificates**, click **Generate key pair**.
+3. Copy the key it shows (a long string starting with `B`) into
+   `web/.env.production.local` as `VITE_FIREBASE_VAPID_KEY=…`.
+4. Deploy functions (`onCommentCreated` and `sendTestNotification` are new),
+   then hosting.
+
+The public half of the key is meant to ship in the app; nothing secret is
+committed. Check it on each device in **Settings → Notifications → Send a test
+notification**. On iPhone this only works from the Home Screen app (iOS 16.4+);
+in Safari the card explains how to install it.
+
+`onCommentCreated` is an Eventarc trigger, like `onExpenseWrite`; if its first
+deploy fails with the Eventarc permission error below, wait two minutes and run
+`npx firebase deploy --only functions:onCommentCreated`.
 
 ## Prompts you will be asked, and what to answer
 
@@ -203,7 +226,9 @@ principal → add **Eventarc Service Agent**.
 
 ```bash
 npx firebase firestore:indexes          # confirm the members(uid) override landed
-npx firebase functions:list             # all FIVE must be listed
+npx firebase functions:list             # all NINE must be listed:
+#   getJoinInfo joinGroup updateExpense removeMember deleteGroup
+#   sendTestNotification autoClose onExpenseWrite onCommentCreated
 npx firebase functions:log --only onExpenseWrite
 ```
 
