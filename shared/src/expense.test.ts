@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatDate,
+  formatDateOf,
+  formatDateTimeOf,
   formatTime,
   isValidLocation,
   isValidTime,
@@ -141,5 +144,30 @@ describe('usableParts', () => {
 
   it('is null for payments recorded before breakdowns existed', () => {
     expect(usableParts({ type: 'settlement', amountPaise: 750 })).toBeNull();
+  });
+});
+
+describe('formatDate', () => {
+  it('writes dates day first as dd/mm/yy', () => {
+    expect(formatDate('2026-08-22')).toBe('22/08/26');
+    expect(formatDate('2026-01-05')).toBe('05/01/26');
+    expect(formatDate('2031-12-31')).toBe('31/12/31');
+  });
+
+  it('passes anything malformed through untouched', () => {
+    expect(formatDate('22 Aug')).toBe('22 Aug');
+    expect(formatDate('')).toBe('');
+  });
+});
+
+describe('formatDateOf / formatDateTimeOf', () => {
+  it('uses local time, day first', () => {
+    const at = new Date(2026, 0, 5, 19, 5);
+    expect(formatDateOf(at)).toBe('05/01/26');
+    expect(formatDateTimeOf(at)).toBe('05/01/26, 7:05 pm');
+  });
+
+  it('formats midnight as 12 am', () => {
+    expect(formatDateTimeOf(new Date(2026, 9, 10, 0, 0))).toBe('10/10/26, 12:00 am');
   });
 });

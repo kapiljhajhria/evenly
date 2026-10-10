@@ -1,5 +1,5 @@
 import type { BalanceMap, Expense } from '@app/shared';
-import { formatPaise, formatTime, netFor, suggestSettlements, usableParts } from '@app/shared';
+import { formatDate, formatDateTimeOf, formatPaise, formatTime, netFor, suggestSettlements, usableParts } from '@app/shared';
 
 /**
  * Everything the PDF says, worked out without jsPDF or the DOM so it can be
@@ -46,25 +46,14 @@ export interface ExportModel {
   receipts: ExportReceipt[];
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 /**
  * The PDF's built-in Helvetica has no ₹ glyph — it would print as a stray
  * character — so amounts read "Rs 1,234.50" in the export only.
  */
 export const pdfMoney = (paise: number): string => `Rs ${formatPaise(paise, { symbol: false })}`;
 
-/** `2026-08-22` → `22 Aug 2026`. Deterministic: no locale, no timezone. */
-export function pdfDate(date: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
-  return match && month ? `${Number(match[3])} ${month} ${match[1]}` : date;
-}
-
-function pdfStamp(at: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${at.getDate()} ${MONTHS[at.getMonth()]} ${at.getFullYear()}, ${pad(at.getHours())}:${pad(at.getMinutes())}`;
-}
+/** Same dd/mm/yy as the app, so the PDF and the screen never disagree. */
+export const pdfDate = formatDate;
 
 /** Ledger order: date, then time where it was recorded. Stable otherwise. */
 function chronological(expenses: ExportExpense[]): ExportExpense[] {
@@ -140,7 +129,7 @@ export function buildExport(input: ExportInput): ExportModel {
 
   return {
     title: input.groupName,
-    subtitle: `${input.closed ? 'Closed group' : 'Active group'} · exported ${pdfStamp(input.generatedAt)}`,
+    subtitle: `${input.closed ? 'Closed group' : 'Active group'} · exported ${formatDateTimeOf(input.generatedAt)}`,
     totals: { spentPaise, expenseCount: expenses.length - settlementCount, settlementCount },
     balanceRows,
     transferRows,

@@ -99,6 +99,29 @@ export function formatTime(time: string | null | undefined): string | null {
   return `${display}:${minutes} ${suffix}`;
 }
 
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+
+/**
+ * `2026-08-22` → `22/08/26`. Day first, as most of the world writes it, and
+ * the same on every device — deliberately not the browser locale, which on a
+ * US-English phone would print 08/22/26. String-sliced, so no timezone can
+ * shift the day. Anything that is not a `YYYY-MM-DD` comes back unchanged.
+ */
+export function formatDate(date: string): string {
+  const match = /^(\d{2})(\d{2})-(\d{2})-(\d{2})$/.exec(date);
+  return match ? `${match[4]}/${match[3]}/${match[2]}` : date;
+}
+
+/** A moment, in local time, as `22/08/26`. */
+export function formatDateOf(at: Date): string {
+  return `${pad2(at.getDate())}/${pad2(at.getMonth() + 1)}/${pad2(at.getFullYear() % 100)}`;
+}
+
+/** A moment, in local time, as `22/08/26, 7:05 pm`. */
+export function formatDateTimeOf(at: Date): string {
+  return `${formatDateOf(at)}, ${formatTime(`${pad2(at.getHours())}:${pad2(at.getMinutes())}`)}`;
+}
+
 /** Local `YYYY-MM-DD` / `HH:mm` — NOT UTC, which would shift the date in IST. */
 export function localDateString(at: Date = new Date()): string {
   const pad = (n: number): string => String(n).padStart(2, '0');

@@ -40,8 +40,8 @@ describe('pdf formatting', () => {
     expect(pdfMoney(123456)).not.toContain('₹');
   });
 
-  it('formats dates without depending on locale or timezone', () => {
-    expect(pdfDate('2026-08-02')).toBe('2 Aug 2026');
+  it('formats dates dd/mm/yy without depending on locale or timezone', () => {
+    expect(pdfDate('2026-08-02')).toBe('02/08/26');
     expect(pdfDate('not-a-date')).toBe('not-a-date');
   });
 });
@@ -58,12 +58,12 @@ describe('buildExport', () => {
       }),
     );
     expect(model.ledgerRows.map((row) => row[1])).toEqual(['Morning', 'Evening', 'Late']);
-    expect(model.ledgerRows[0]![0]).toBe('22 Aug 2026\n8:30 am');
+    expect(model.ledgerRows[0]![0]).toBe('22/08/26\n8:30 am');
   });
 
   it('shows each split with its exact paise, remainder included', () => {
     const [row] = buildExport(input()).ledgerRows;
-    expect(row).toEqual(['22 Aug 2026', 'Dinner', 'Asha', 'Rs 300.01', 'Asha Rs 150.01\nBilal Rs 150.00']);
+    expect(row).toEqual(['22/08/26', 'Dinner', 'Asha', 'Rs 300.01', 'Asha Rs 150.01\nBilal Rs 150.00']);
   });
 
   it('puts the note under the description', () => {
@@ -87,7 +87,7 @@ describe('buildExport', () => {
         ],
       }),
     );
-    expect(model.ledgerRows[1]).toEqual(['22 Aug 2026', 'Bilal paid Asha (settlement)', 'Bilal', 'Rs 150.00', '—']);
+    expect(model.ledgerRows[1]).toEqual(['22/08/26', 'Bilal paid Asha (settlement)', 'Bilal', 'Rs 150.00', '—']);
     expect(model.totals).toEqual({ spentPaise: 30001, expenseCount: 1, settlementCount: 1 });
   });
 
@@ -120,8 +120,8 @@ describe('buildExport', () => {
       }),
     );
     expect(model.receipts).toEqual([
-      { path: 'receipts/g/a.jpg', caption: '22 Aug 2026 · Dinner · Rs 300.01 · paid by Asha' },
-      { path: 'receipts/g/b.webp', caption: '23 Aug 2026 · Cab · Rs 300.01 · paid by Asha' },
+      { path: 'receipts/g/a.jpg', caption: '22/08/26 · Dinner · Rs 300.01 · paid by Asha' },
+      { path: 'receipts/g/b.webp', caption: '23/08/26 · Cab · Rs 300.01 · paid by Asha' },
     ]);
   });
 
@@ -138,7 +138,7 @@ describe('buildExport', () => {
     const model = buildExport(input({ balances: {}, closed: true }));
     expect(model.transferRows).toEqual([]);
     expect(model.balanceRows.map((row) => row[1])).toEqual(['settled up', 'settled up']);
-    expect(model.subtitle).toBe('Closed group · exported 10 Oct 2026, 09:05');
+    expect(model.subtitle).toBe('Closed group · exported 10/10/26, 9:05 am');
   });
 
   it('names members who are no longer in the group rather than dropping the row', () => {

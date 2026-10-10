@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from 'react-router';
 import type { Timestamp } from 'firebase/firestore';
 import type { Member, WithId } from '@app/shared';
-import { formatPaise, formatTime, usableParts } from '@app/shared';
+import { formatDate, formatDateTimeOf, formatPaise, formatTime, usableParts } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { useExpense, useExpenseHistory } from '../../hooks/useExpenses.js';
@@ -133,6 +133,7 @@ function describeValue(field: string, value: unknown, membersById: Record<string
   if (field === 'amountPaise') return formatPaise(value as number);
   if (field === 'paidBy') return membersById[value as string]?.name ?? 'someone';
   if (field === 'time') return formatTime(value as string) ?? String(value);
+  if (field === 'date') return formatDate(String(value));
   if (field === 'location') return 'a location';
   if (field === 'splits') return 'the split';
   return String(value);
@@ -166,12 +167,7 @@ function ExpenseHistory({
             <p className="text-slate-600">
               {nameOfUid(entry.editedBy)} ·{' '}
               <span className="text-slate-400">
-                {entry.editedAt?.toDate().toLocaleString('en-IN', {
-                  day: 'numeric',
-                  month: 'short',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                }) ?? 'just now'}
+                {entry.editedAt ? formatDateTimeOf(entry.editedAt.toDate()) : 'just now'}
               </span>
             </p>
             <ul className="mt-1 space-y-0.5 text-xs text-slate-500">

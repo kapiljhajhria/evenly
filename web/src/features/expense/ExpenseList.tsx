@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { Expense, Member, WithId } from '@app/shared';
-import { formatPaise, formatTime, usableParts } from '@app/shared';
+import { formatDate, formatPaise, formatTime, usableParts } from '@app/shared';
 import { Link } from 'react-router';
 import { Avatar, Button, EmptyState, Money } from '../../components/ui.js';
 import { deleteExpense, expensePermissions } from './api.js';
@@ -9,14 +9,7 @@ import { ReceiptLink } from '../receipt/ReceiptViewer.js';
 import { ReceiptRetryButton } from '../receipt/ReceiptSection.js';
 import { needsAttention, viewOf } from '../receipt/status.js';
 
-function formatDate(date: string): string {
-  const parsed = new Date(`${date}T00:00:00`);
-  return Number.isNaN(parsed.getTime())
-    ? date
-    : parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-}
-
-/** "22 Aug · 7:05 pm" — the time half is skipped on expenses that predate it. */
+/** "22/08/26 · 7:05 pm" — the time half is skipped on expenses that predate it. */
 function formatWhen(expense: Expense<Timestamp>): string {
   const time = formatTime(expense.time);
   return time ? `${formatDate(expense.date)} · ${time}` : formatDate(expense.date);
