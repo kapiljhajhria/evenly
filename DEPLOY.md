@@ -226,8 +226,8 @@ principal → add **Eventarc Service Agent**.
 
 ```bash
 npx firebase firestore:indexes          # confirm the members(uid) override landed
-npx firebase functions:list             # all NINE must be listed:
-#   getJoinInfo joinGroup updateExpense removeMember deleteGroup
+npx firebase functions:list             # all TEN must be listed:
+#   getJoinInfo joinGroup updateExpense removeMember deleteGroup setGroupClosed
 #   sendTestNotification autoClose onExpenseWrite onCommentCreated
 npx firebase functions:log --only onExpenseWrite
 ```

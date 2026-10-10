@@ -9,7 +9,7 @@ import { formatPaise } from './money.js';
  * never the person who caused it.
  */
 
-export const NOTIFICATION_KINDS = ['expenses', 'payments', 'confirmations', 'deletions', 'comments'] as const;
+export const NOTIFICATION_KINDS = ['expenses', 'payments', 'confirmations', 'deletions', 'comments', 'groups'] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 /** `users/{uid}/settings/notifications`. Missing doc or field = on. */
@@ -166,4 +166,36 @@ export function notificationsForComment(
     url: expenseUrl(group, expense.id),
     tag: `comments:${expense.id}`,
   }));
+}
+
+export type GroupLifecycleEvent = 'closing-soon' | 'auto-closed' | 'closed' | 'reopened';
+
+/**
+ * Closing and reopening concern everyone in the group, so — unlike expense
+ * events — every claimed member hears about them, except whoever did it.
+ * No dates in the text: the server's clock and timezone are not the reader's.
+ */
+export function notificationsForGroup(
+  group: GroupFacts,
+  event: GroupLifecycleEvent,
+  actorUid: string | null,
+): OutgoingNotification[] {
+  const actor = actorUid ? nameOfUid(group, actorUid) : '';
+  const body = {
+    'closing-soon': 'Everyone is settled up, so this group closes automatically tomorrow. Add anything missing before then.',
+    'auto-closed': 'Closed automatically — everyone was settled up for a week. It is read-only now.',
+    closed: `${actor} closed the group — everyone is settled up. It is read-only now.`,
+    reopened: `${actor} reopened the group, so expenses can be added again.`,
+  }[event];
+  const uids = [...new Set(Object.values(group.uidOf).filter((uid): uid is string => Boolean(uid)))];
+  return uids
+    .filter((uid) => uid !== actorUid)
+    .map((uid) => ({
+      uid,
+      kind: 'groups' as const,
+      title: group.groupName,
+      body,
+      url: `/group/${group.groupId}`,
+      tag: `group:${group.groupId}`,
+    }));
 }

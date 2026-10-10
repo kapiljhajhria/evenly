@@ -4,6 +4,7 @@ import {
   notificationsForComment,
   notificationsForCreate,
   notificationsForDelete,
+  notificationsForGroup,
   wants,
   type GroupFacts,
 } from './notify.js';
@@ -121,5 +122,29 @@ describe('wants', () => {
     expect(wants({}, 'comments')).toBe(true);
     expect(wants({ comments: false }, 'comments')).toBe(false);
     expect(wants({ comments: false }, 'expenses')).toBe(true);
+  });
+});
+
+describe('notificationsForGroup', () => {
+  it('tells every claimed member except whoever did it', () => {
+    const notes = notificationsForGroup(group, 'closed', 'u-asha');
+    expect(notes.map((n) => n.uid).sort()).toEqual(['u-bilal', 'u-chitra']);
+    expect(notes[0]).toMatchObject({
+      kind: 'groups',
+      title: 'Goa trip',
+      body: 'Asha closed the group — everyone is settled up. It is read-only now.',
+      url: '/group/g',
+      tag: 'group:g',
+    });
+  });
+
+  it('tells everyone when the system does it', () => {
+    const notes = notificationsForGroup(group, 'closing-soon', null);
+    expect(notes.map((n) => n.uid).sort()).toEqual(['u-asha', 'u-bilal', 'u-chitra']);
+    expect(notes[0]?.body).toContain('closes automatically tomorrow');
+    expect(notificationsForGroup(group, 'auto-closed', null)[0]?.body).toContain('Closed automatically');
+    expect(notificationsForGroup(group, 'reopened', 'u-bilal')[0]?.body).toBe(
+      'Bilal reopened the group, so expenses can be added again.',
+    );
   });
 });

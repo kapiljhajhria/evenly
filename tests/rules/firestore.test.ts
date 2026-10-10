@@ -789,7 +789,7 @@ describe('push devices and notification settings', () => {
   });
 
   it('lets you set your own notification choices, and nobody else', async () => {
-    await assertSucceeds(setDoc(prefs(BOB), { comments: false, expenses: true }));
+    await assertSucceeds(setDoc(prefs(BOB), { comments: false, expenses: true, groups: false }));
     await assertSucceeds(getDoc(prefs(BOB)));
     await assertFails(getDoc(prefs(ALICE, BOB)));
     await assertFails(setDoc(prefs(ALICE, BOB), { comments: false }));

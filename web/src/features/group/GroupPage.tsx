@@ -11,6 +11,7 @@ import { EditableGroupName } from './EditableGroupName.js';
 import { ExpenseList } from '../expense/ExpenseList.js';
 import { ExportButton } from '../export/ExportButton.js';
 import { DeleteGroupCard, DeletedGroupPanel } from './DeleteGroupCard.js';
+import { ClosedCard, SettledCard } from './CloseGroupCard.js';
 import { buildActivity } from '../activity/activity.js';
 import { useActivitySince, useLastSeen } from '../activity/useActivity.js';
 import { WhatsNew } from '../activity/WhatsNew.js';
@@ -116,11 +117,28 @@ export function GroupPage() {
           balances={group.balances ?? {}}
           members={exportMembers}
         />
+      ) : group.status === 'closed' ? (
+        <ClosedCard
+          groupId={groupId}
+          isCreator={isCreator}
+          closedByName={
+            group.closedBy
+              ? group.closedBy === user?.uid
+                ? 'you'
+                : (members.find((m) => m.uid === group.closedBy)?.name ?? 'the group creator')
+              : null
+          }
+          closedAtMs={group.closedAt?.toMillis() ?? null}
+        />
       ) : (
-        !isActive && (
-          <Card className="bg-slate-100 text-sm text-slate-600">
-            This group is closed and read-only. Everything settled up.
-          </Card>
+        group.balancesZero && (
+          <SettledCard
+            groupId={groupId}
+            isCreator={isCreator}
+            zeroSinceMs={group.zeroSince?.toMillis() ?? null}
+            lastExpenseAtMs={group.lastExpenseAt?.toMillis() ?? null}
+            unconfirmedCount={unconfirmed.length}
+          />
         )
       )}
 

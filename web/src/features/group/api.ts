@@ -30,6 +30,12 @@ export const joinGroup = httpsCallable<
   { memberId: string; groupName: string }
 >(functions, 'joinGroup');
 
+/** Creator-only. Close needs everyone settled; reopening restarts the quiet week. */
+export const setGroupClosed = httpsCallable<
+  { groupId: string; closed: boolean },
+  { groupId: string; status: string; changed: boolean }
+>(functions, 'setGroupClosed');
+
 /**
  * Creator-only, two stages: `soft` (default) marks the group deleted and
  * read-only, `restore` undoes it, `permanent` really removes it — refused by

@@ -41,9 +41,9 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (214 tests, no emulator)
+npm test                 # pure logic in shared/ and web/ (221 tests, no emulator)
 npm run test:rules       # Firestore + Storage rules vs the emulators (166 tests)
-npm run test:integration # functions + real client modules (89 tests)
+npm run test:integration # functions + real client modules (95 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
 ```
@@ -183,6 +183,11 @@ upload parked in IndexedDB, resumed on app open or reconnect, with Retry;
 a `pending` older than 15 minutes is shown as failed), client-side PDF export
 (ledger and balances first, every receipt appended one per page), and
 `deleteGroup` UI (creator-only, PDF download required first).
+
+Also done: close flow — a "settled up, closes around …" card, creator-only
+Close now / Reopen (`setGroupClosed`; reopening restarts the quiet week so the
+nightly `autoClose` does not re-close it), and a day's notice before
+auto-close. The timing rules live in `shared/src/lifecycle.ts`.
 
 Next, per the brief §9: close flow + `autoClose` UI, PWA polish, then FCM
 push in v1.5.

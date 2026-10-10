@@ -106,6 +106,10 @@ export interface Group<TS = TimestampLike> {
   defaultSplit: DefaultSplit | null;
   createdAt: TS;
   closedAt: TS | null;
+  /** Who closed it by hand; null when autoClose did. Absent on older groups. */
+  closedBy?: Uid | null;
+  /** When the "closes tomorrow" notice went out for the current quiet week. */
+  closeNoticeAt?: TS | null;
   /** Set while soft-deleted. Absent on every group never deleted. */
   deletedAt?: TS | null;
   deletedBy?: Uid | null;
