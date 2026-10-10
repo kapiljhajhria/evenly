@@ -72,7 +72,7 @@ export function ReceiptSection({
           >
             {(open) => (
               <Button type="button" variant="secondary" onClick={open} busy={busy}>
-                {path || status !== 'none' ? 'Replace photo' : 'Add receipt photo'}
+                {path || status !== 'none' ? 'Replace' : 'Add receipt or bill'}
               </Button>
             )}
           </ReceiptPicker>
@@ -82,7 +82,7 @@ export function ReceiptSection({
               variant="ghost"
               disabled={busy}
               onClick={() => {
-                if (confirm('Remove this receipt? The photo is deleted for everyone.')) {
+                if (confirm('Remove this receipt? The file is deleted for everyone.')) {
                   void act(() => removeReceipt(groupId, expense.id));
                 }
               }}
@@ -101,10 +101,10 @@ function FailedReceiptHelp({ groupId, expenseId }: { groupId: string; expenseId:
   return (
     <div className="space-y-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-100">
       {state === 'missing' ? (
-        <p>The photo is not saved on this device. Pick it again with Replace photo.</p>
+        <p>The file is not saved on this device. Pick it again with Replace.</p>
       ) : (
         <>
-          <p>The photo did not reach the server. The expense itself is saved.</p>
+          <p>The file did not reach the server. The expense itself is saved.</p>
           <Button
             type="button"
             variant="secondary"

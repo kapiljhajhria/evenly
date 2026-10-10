@@ -74,10 +74,10 @@ export default defineConfig(({ command, mode }) => {
         workbox: {
           navigateFallbackDenylist: [/^\/__/],
           globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-          // PDF export and the libraries jsPDF pulls in (~750KB) load only
-          // when someone exports. Precaching them would make every user
-          // download them on every update.
-          globIgnores: ['**/jspdf*', '**/html2canvas*', '**/purify*', '**/canvg*'],
+          // PDF export and the libraries jsPDF pulls in (~750KB), plus pdf-lib
+          // for merging PDF bills, load only when someone exports. Precaching
+          // them would make every user download them on every update.
+          globIgnores: ['**/jspdf*', '**/html2canvas*', '**/purify*', '**/canvg*', '**/pdf-lib*'],
         },
         devOptions: { enabled: false },
       }),
@@ -96,8 +96,9 @@ export default defineConfig(({ command, mode }) => {
               'firebase/functions',
               'firebase/storage',
             ],
-            // Named so the precache can exclude it; jsPDF imports it lazily.
+            // Named so the precache can exclude them; both load lazily.
             canvg: ['canvg'],
+            'pdf-lib': ['pdf-lib'],
           },
         },
       },

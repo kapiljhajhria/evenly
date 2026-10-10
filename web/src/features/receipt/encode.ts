@@ -1,9 +1,10 @@
 import { planCrop, type CropRect } from './crop.js';
 
+/** What gets uploaded: an encoded photo, or a PDF exactly as it was picked. */
 export interface EncodedReceipt {
   blob: Blob;
-  ext: 'webp' | 'jpg';
-  contentType: 'image/webp' | 'image/jpeg';
+  ext: 'webp' | 'jpg' | 'pdf';
+  contentType: 'image/webp' | 'image/jpeg' | 'application/pdf';
 }
 
 /** Comfortably under the 1MB cap in storage.rules. */
@@ -51,7 +52,10 @@ export async function encodeReceipt(source: Blob, rect: CropRect): Promise<Encod
   context.imageSmoothingQuality = 'high';
   context.drawImage(image, plan.sx, plan.sy, plan.sw, plan.sh, 0, 0, plan.width, plan.height);
 
-  let format: Pick<EncodedReceipt, 'ext' | 'contentType'> = { ext: 'webp', contentType: 'image/webp' };
+  let format: { ext: 'webp' | 'jpg'; contentType: 'image/webp' | 'image/jpeg' } = {
+    ext: 'webp',
+    contentType: 'image/webp',
+  };
   for (const quality of QUALITIES) {
     let blob = await toBlob(canvas, format.contentType, quality);
     if (format.ext === 'webp' && blob?.type !== 'image/webp') {

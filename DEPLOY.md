@@ -111,8 +111,9 @@ is a scheduled function and `onExpenseWrite` is an Eventarc trigger.
 
 ### Storage CORS — once, for PDF export
 
-PDF export draws each receipt onto a canvas to re-encode it as JPEG, and a
-canvas will not read pixels from another origin without CORS. The bucket has
+PDF export draws each photo receipt onto a canvas to re-encode it as JPEG,
+and downloads each PDF bill to merge its pages in. Neither works across
+origins without CORS. The bucket has
 no CORS policy by default, so without this step every receipt page in the PDF
 says "could not be loaded" (viewing receipts in the app is unaffected).
 

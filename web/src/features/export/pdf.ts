@@ -4,6 +4,7 @@ import type { BalanceMap, Expense, WithId } from '@app/shared';
 import { storage } from '../../lib/firebase.js';
 import { expensesCol } from '../../lib/paths.js';
 import { buildExport, exportFileName, pdfMoney, type ExportModel } from './model.js';
+import { insertionIndices, receiptKind } from '../receipt/kind.js';
 
 export type ExportProgress =
   | { step: 'loading' }
@@ -27,10 +28,24 @@ const exportedThisSession = new Set<string>();
  */
 export const exportedGroupThisSession = (groupId: string): boolean => exportedThisSession.has(groupId);
 
+type PdfLib = typeof import('pdf-lib');
+type LoadedPdf = Awaited<ReturnType<PdfLib['PDFDocument']['load']>>;
+
+/** A PDF receipt whose pages go in straight after its caption page. */
+interface PdfAttachment {
+  captionPage: number;
+  source: LoadedPdf;
+}
+
 /**
  * Builds and downloads the group's PDF, entirely client-side (brief §3): the
  * ledger and balances first, then every receipt, one per page with a caption.
  * Receipts are never interleaved with table rows.
+ *
+ * A PDF receipt (an emailed invoice) gets a caption page followed by its own
+ * original pages, merged in with pdf-lib — the export is the record people
+ * are made to download before a group is deleted, so a placeholder would not
+ * do. pdf-lib is only loaded when there is a PDF to merge.
  */
 export async function exportGroupPdf(args: {
   groupId: string;
@@ -74,6 +89,9 @@ export async function exportGroupPdf(args: {
   writeSummary(doc, autoTable, model, lastY);
 
   let missingReceipts = 0;
+  let pdfLib: PdfLib | null = null;
+  const attachments: PdfAttachment[] = [];
+
   for (const [index, receipt] of model.receipts.entries()) {
     onProgress?.({ step: 'receipts', done: index, total: model.receipts.length });
     doc.addPage();
@@ -85,13 +103,35 @@ export async function exportGroupPdf(args: {
     const captionLines = doc.splitTextToSize(receipt.caption, pageWidth - MARGIN * 2) as string[];
     doc.text(captionLines, MARGIN, MARGIN + 18);
     const top = MARGIN + 18 + captionLines.length * 15 + 8;
+    const note = (text: string, warn = false) => {
+      doc.setFontSize(11);
+      if (warn) doc.setTextColor(180, 83, 9);
+      else doc.setTextColor(71, 85, 105);
+      doc.text(doc.splitTextToSize(text, pageWidth - MARGIN * 2) as string[], MARGIN, top + 20);
+    };
+
+    if (receiptKind(receipt.path) === 'pdf') {
+      pdfLib ??= await import('pdf-lib');
+      const source = await loadReceiptPdf(pdfLib, receipt.path).catch(() => null);
+      if (!source) {
+        missingReceipts += 1;
+        note(
+          'This PDF could not be added — it may be password-protected or could not be downloaded. ' +
+            'It is still attached to the expense in Evenly.',
+          true,
+        );
+        continue;
+      }
+      const pages = source.getPageCount();
+      note(`Attached PDF: ${pages} page${pages === 1 ? '' : 's'} follow${pages === 1 ? 's' : ''}.`);
+      attachments.push({ captionPage: doc.getNumberOfPages(), source });
+      continue;
+    }
 
     const image = await loadReceiptAsJpeg(receipt.path).catch(() => null);
     if (!image) {
       missingReceipts += 1;
-      doc.setFontSize(11);
-      doc.setTextColor(180, 83, 9);
-      doc.text('This receipt could not be loaded. It may still be viewable in the app.', MARGIN, top + 20);
+      note('This receipt could not be loaded. It may still be viewable in the app.', true);
       continue;
     }
 
@@ -104,10 +144,75 @@ export async function exportGroupPdf(args: {
   }
 
   onProgress?.({ step: 'saving' });
-  addPageNumbers(doc, pageWidth, pageHeight);
-  doc.save(exportFileName(args.groupName, generatedAt));
+  const fileName = exportFileName(args.groupName, generatedAt);
+  if (pdfLib && attachments.length > 0) {
+    downloadPdf(await mergeAttachments(pdfLib, doc, attachments), fileName);
+  } else {
+    addPageNumbers(doc, pageWidth, pageHeight);
+    doc.save(fileName);
+  }
   exportedThisSession.add(args.groupId);
   return { receiptCount: model.receipts.length, missingReceipts };
+}
+
+/**
+ * Splice each attached PDF's pages in after its caption, then number the
+ * report's own pages against the final total. The attached pages are left
+ * untouched — a page number stamped on someone's invoice could land on top of
+ * its contents.
+ */
+async function mergeAttachments(pdfLib: PdfLib, doc: Doc, attachments: PdfAttachment[]): Promise<Uint8Array> {
+  const merged = await pdfLib.PDFDocument.load(doc.output('arraybuffer'));
+  const reportPages = new Set(merged.getPages());
+  const at = insertionIndices(
+    attachments.map((a) => a.captionPage),
+    attachments.map((a) => a.source.getPageCount()),
+  );
+
+  for (const [i, attachment] of attachments.entries()) {
+    const copied = await merged.copyPages(attachment.source, attachment.source.getPageIndices());
+    copied.forEach((page, offset) => merged.insertPage(at[i]! + offset, page));
+  }
+
+  const font = await merged.embedFont(pdfLib.StandardFonts.Helvetica);
+  const pages = merged.getPages();
+  pages.forEach((page, index) => {
+    if (!reportPages.has(page)) return;
+    const label = `Evenly · page ${index + 1} of ${pages.length}`;
+    const size = 8;
+    page.drawText(label, {
+      x: page.getWidth() - MARGIN - font.widthOfTextAtSize(label, size),
+      y: 20 - size / 2,
+      size,
+      font,
+      color: pdfLib.rgb(148 / 255, 163 / 255, 184 / 255),
+    });
+  });
+  return merged.save();
+}
+
+function downloadPdf(bytes: Uint8Array, fileName: string): void {
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // Revoking straight away can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/**
+ * Fetch and parse a PDF receipt. Encrypted PDFs throw (pdf-lib refuses them
+ * by default, and forcing it produces blank pages), which the caller turns
+ * into a "could not be added" caption. Needs the same bucket CORS as images.
+ */
+async function loadReceiptPdf(pdfLib: PdfLib, path: string): Promise<LoadedPdf> {
+  const url = await getDownloadURL(ref(storage, path));
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return pdfLib.PDFDocument.load(await response.arrayBuffer());
 }
 
 type Doc = InstanceType<typeof import('jspdf').jsPDF>;

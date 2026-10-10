@@ -41,8 +41,8 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (163 tests, no emulator)
-npm run test:rules       # Firestore + Storage rules vs the emulators (119 tests)
+npm test                 # pure logic in shared/ and web/ (171 tests, no emulator)
+npm run test:rules       # Firestore + Storage rules vs the emulators (126 tests)
 npm run test:integration # functions + real client modules (60 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
@@ -123,6 +123,9 @@ workspace-only version spec is unresolvable from the public registry.
   `receiptStatus: 'pending'`, the encoded photo is parked in IndexedDB, and
   `features/receipt/queue.ts` uploads it in the background. Clients cannot
   delete Storage objects; clearing `receiptPath` makes `onExpenseWrite` do it.
+  A receipt is a photo (`.webp`/`.jpg`, ≤1MB) or a PDF bill uploaded as-is
+  (`.pdf`, ≤5MB); the kind is read off the path's extension, so there is no
+  extra field. The group export merges PDF bills' own pages in with pdf-lib.
 - **`member.uid` is written by `joinGroup` and nothing else** — including for the
   group creator's own slot. Group creation is therefore three sequenced steps
   (group doc → unclaimed slots → `joinGroup`), never one batch: member rules

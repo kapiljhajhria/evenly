@@ -26,6 +26,8 @@ const path = (file: string, groupId = GROUP_ID) => `receipts/${groupId}/${file}`
 
 const WEBP = { contentType: 'image/webp' };
 const JPEG = { contentType: 'image/jpeg' };
+const PDF = { contentType: 'application/pdf' };
+const MB = 1024 * 1024;
 const bytes = (size = 1024) => new Uint8Array(size);
 
 beforeAll(async () => {
@@ -86,6 +88,32 @@ describe('storage: receipt uploads', () => {
     ['a double extension', 'dinner.webp.html', WEBP],
   ])('blocks %s', async (_label, file, metadata) => {
     await assertFails(uploadBytes(ref(storageAs(ALICE), path(file)), bytes(), metadata));
+  });
+
+  it('accepts a PDF invoice', async () => {
+    await assertSucceeds(uploadBytes(ref(storageAs(BOB), path('dinner.pdf')), bytes(), PDF));
+  });
+
+  it('gives PDFs a 5MB cap, since they are not re-encoded', async () => {
+    await assertSucceeds(uploadBytes(ref(storageAs(ALICE), path('dinner.pdf')), bytes(5 * MB), PDF));
+    await assertFails(uploadBytes(ref(storageAs(ALICE), path('dinner.pdf')), bytes(5 * MB + 1), PDF));
+  });
+
+  it('keeps photos at 1MB even though PDFs may be larger', async () => {
+    await assertFails(uploadBytes(ref(storageAs(ALICE), path('dinner.webp')), bytes(2 * MB), WEBP));
+    await assertFails(uploadBytes(ref(storageAs(ALICE), path('dinner.jpg')), bytes(2 * MB), JPEG));
+  });
+
+  it.each([
+    ['a PDF typed as an image', 'dinner.pdf', WEBP],
+    ['a large file named .pdf but typed otherwise', 'dinner.pdf', { contentType: 'application/octet-stream' }],
+    ['a PDF smuggled under an image name', 'dinner.webp', PDF],
+  ])('blocks %s', async (_label, file, metadata) => {
+    await assertFails(uploadBytes(ref(storageAs(ALICE), path(file)), bytes(), metadata));
+  });
+
+  it('blocks a PDF from someone outside the group', async () => {
+    await assertFails(uploadBytes(ref(storageAs(STRANGER), path('dinner.pdf')), bytes(), PDF));
   });
 
   it('blocks anything over 1MB', async () => {

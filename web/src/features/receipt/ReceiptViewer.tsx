@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { getDownloadURL, ref } from 'firebase/storage';
 import { storage } from '../../lib/firebase.js';
 import { Spinner } from '../../components/ui.js';
+import { receiptKind } from './kind.js';
 
 /**
  * "View receipt" link that opens a full-screen viewer. The download URL is
@@ -19,7 +20,7 @@ export function ReceiptLink({ path, className = '' }: { path: string; className?
         className={`inline-flex items-center gap-1 font-medium text-brand-600 hover:underline ${className}`}
       >
         <ReceiptIcon />
-        View receipt
+        {receiptKind(path) === 'pdf' ? 'View bill (PDF)' : 'View receipt'}
       </button>
       {open && <ReceiptViewer path={path} onClose={() => setOpen(false)} />}
     </>
@@ -27,6 +28,7 @@ export function ReceiptLink({ path, className = '' }: { path: string; className?
 }
 
 function ReceiptViewer({ path, onClose }: { path: string; onClose: () => void }) {
+  const isPdf = receiptKind(path) === 'pdf';
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +57,7 @@ function ReceiptViewer({ path, onClose }: { path: string; onClose: () => void })
       onClick={onClose}
     >
       <div className="flex items-center justify-between px-4 py-3">
-        {url ? (
+        {url && !isPdf ? (
           <a
             href={url}
             target="_blank"
@@ -75,6 +77,24 @@ function ReceiptViewer({ path, onClose }: { path: string; onClose: () => void })
       <div className="flex min-h-0 flex-1 items-center justify-center p-4">
         {error ? (
           <p className="text-sm text-slate-300">{error}</p>
+        ) : url && isPdf ? (
+          // No in-app PDF renderer (pdf.js is ~1MB); the phone's own viewer is
+          // better anyway. A real link tap, so mobile browsers do not treat
+          // it as a popup the way a window.open after an await would be.
+          <div className="space-y-4 text-center" onClick={(event) => event.stopPropagation()}>
+            <span className="mx-auto grid size-20 place-items-center rounded-2xl bg-red-50 text-lg font-bold text-red-700">
+              PDF
+            </span>
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-11 items-center rounded-xl bg-white px-5 text-sm font-semibold text-slate-900"
+            >
+              Open PDF
+            </a>
+            <p className="text-xs text-slate-400">Opens in your phone's PDF viewer.</p>
+          </div>
         ) : url ? (
           <img
             src={url}

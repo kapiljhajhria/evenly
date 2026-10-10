@@ -15,5 +15,5 @@ export const userDoc = (uid: string) => doc(db, 'users', uid);
 /** Powers the home page: every slot claimed by me, across all groups. */
 export const allMembers = () => collectionGroup(db, 'members');
 
-export const receiptPath = (groupId: string, expenseId: string, ext: 'webp' | 'jpg') =>
+export const receiptPath = (groupId: string, expenseId: string, ext: 'webp' | 'jpg' | 'pdf') =>
   `receipts/${groupId}/${expenseId}.${ext}`;

@@ -15,10 +15,20 @@ service firebase.storage {
     }
 
     // The client only ever produces {expenseId}.webp, or .jpg where the
-    // browser cannot encode WebP — and the extension must match the type.
+    // browser cannot encode WebP, or .pdf for an invoice uploaded as-is — and
+    // the extension must match the type. Photos are re-encoded to ~300KB so
+    // keep a 1MB cap; PDFs are not re-encoded, so they get 5MB
+    // (MAX_PDF_BYTES in web/src/features/receipt/kind.ts).
     function receiptFile(fileName) {
-      return (fileName.matches('^[A-Za-z0-9_-]+[.]webp$') && request.resource.contentType == 'image/webp')
-        || (fileName.matches('^[A-Za-z0-9_-]+[.]jpg$') && request.resource.contentType == 'image/jpeg');
+      return (fileName.matches('^[A-Za-z0-9_-]+[.]webp$')
+              && request.resource.contentType == 'image/webp'
+              && request.resource.size <= 1 * 1024 * 1024)
+        || (fileName.matches('^[A-Za-z0-9_-]+[.]jpg$')
+              && request.resource.contentType == 'image/jpeg'
+              && request.resource.size <= 1 * 1024 * 1024)
+        || (fileName.matches('^[A-Za-z0-9_-]+[.]pdf$')
+              && request.resource.contentType == 'application/pdf'
+              && request.resource.size <= 5 * 1024 * 1024);
     }
 
     match /receipts/{groupId}/{fileName} {
@@ -27,8 +37,7 @@ service firebase.storage {
       // create + update only: `write` would include delete.
       allow create, update: if isMember(groupId)
         && receiptFile(fileName)
-        && expenseExists(groupId, fileName.split('[.]')[0])
-        && request.resource.size <= 1 * 1024 * 1024;
+        && expenseExists(groupId, fileName.split('[.]')[0]);
 
       // onExpenseWrite / deleteGroup handle removal.
       allow delete: if false;
