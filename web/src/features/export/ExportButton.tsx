@@ -60,7 +60,7 @@ export function ExportButton({
         <p className="text-xs text-slate-500">
           Downloaded.
           {result.missingReceipts > 0 &&
-            ` ${result.missingReceipts} of ${result.receiptCount} receipts could not be added — their pages say so.`}
+            ` ${result.missingReceipts} of ${result.receiptCount} receipts could not be added — their pages say why.`}
         </p>
       )}
     </div>

@@ -112,26 +112,30 @@ export async function exportGroupPdf(args: {
 
     if (receiptKind(receipt.path) === 'pdf') {
       pdfLib ??= await import('pdf-lib');
-      const source = await loadReceiptPdf(pdfLib, receipt.path).catch(() => null);
-      if (!source) {
+      const loaded = await loadReceiptPdf(pdfLib!, receipt.path).then(
+        (source) => ({ source, reason: null }),
+        (error: unknown) => ({ source: null, reason: failureOf(error, receipt.path) }),
+      );
+      if (!loaded.source) {
         missingReceipts += 1;
-        note(
-          'This PDF could not be added — it may be password-protected or could not be downloaded. ' +
-            'It is still attached to the expense in Evenly.',
-          true,
-        );
+        note(FAILURE_TEXT[loaded.reason ?? 'unreadable'], true);
         continue;
       }
+      const source = loaded.source;
       const pages = source.getPageCount();
       note(`Attached PDF: ${pages} page${pages === 1 ? '' : 's'} follow${pages === 1 ? 's' : ''}.`);
       attachments.push({ captionPage: doc.getNumberOfPages(), source });
       continue;
     }
 
-    const image = await loadReceiptAsJpeg(receipt.path).catch(() => null);
+    const loadedImage = await loadReceiptAsJpeg(receipt.path).then(
+      (image) => ({ image, reason: null }),
+      (error: unknown) => ({ image: null, reason: failureOf(error, receipt.path) }),
+    );
+    const image = loadedImage.image;
     if (!image) {
       missingReceipts += 1;
-      note('This receipt could not be loaded. It may still be viewable in the app.', true);
+      note(FAILURE_TEXT[loadedImage.reason ?? 'unreadable'], true);
       continue;
     }
 
@@ -209,10 +213,24 @@ function downloadPdf(bytes: Uint8Array, fileName: string): void {
  * into a "could not be added" caption. Needs the same bucket CORS as images.
  */
 async function loadReceiptPdf(pdfLib: PdfLib, path: string): Promise<LoadedPdf> {
-  const url = await getDownloadURL(ref(storage, path));
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return pdfLib.PDFDocument.load(await response.arrayBuffer());
+  const url = await downloadUrl(path);
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    // fetch() rejects with a bare TypeError for a CORS refusal; a dead
+    // network looks the same, but the export already needed the network to
+    // read the expenses a moment ago.
+    throw new ReceiptLoadError('blocked', error);
+  }
+  if (!response.ok) throw new ReceiptLoadError('missing', new Error(`HTTP ${response.status}`));
+  const bytes = await response.arrayBuffer();
+  try {
+    return await pdfLib.PDFDocument.load(bytes);
+  } catch (error) {
+    const encrypted = (error as Error | null)?.name === 'EncryptedPDFError' || /encrypt/i.test(String(error));
+    throw new ReceiptLoadError(encrypted ? 'protected' : 'unreadable', error);
+  }
 }
 
 type Doc = InstanceType<typeof import('jspdf').jsPDF>;
@@ -284,16 +302,71 @@ function addPageNumbers(doc: Doc, pageWidth: number, pageHeight: number): void {
 }
 
 /**
+ * Why a receipt did not make it into the PDF, so the page can say so rather
+ * than a generic "could not be loaded" — the fixes are completely different.
+ */
+type LoadFailure = 'missing' | 'blocked' | 'protected' | 'unreadable';
+
+class ReceiptLoadError extends Error {
+  constructor(readonly reason: LoadFailure, cause?: unknown) {
+    super(reason, { cause });
+  }
+}
+
+const FAILURE_TEXT: Record<LoadFailure, string> = {
+  missing: 'This receipt could not be found, or you no longer have access to it.',
+  blocked:
+    "This receipt is still viewable in Evenly, but the storage bucket's CORS setting stopped it being copied " +
+    'into the PDF. (Fix: the one-time "Storage CORS" step in DEPLOY.md.)',
+  protected:
+    'This PDF is password-protected, so its pages cannot be added here. It is still attached to the expense in Evenly.',
+  unreadable: 'This receipt could not be read. It may still be viewable in Evenly.',
+};
+
+function failureOf(error: unknown, path: string): LoadFailure {
+  const reason = error instanceof ReceiptLoadError ? error.reason : 'unreadable';
+  console.warn(`[export] receipt not added (${reason})`, path, error instanceof ReceiptLoadError ? error.cause : error);
+  return reason;
+}
+
+async function downloadUrl(path: string): Promise<string> {
+  try {
+    return await getDownloadURL(ref(storage, path));
+  } catch (error) {
+    throw new ReceiptLoadError('missing', error);
+  }
+}
+
+const decodeImage = async (url: string, crossOrigin: boolean): Promise<HTMLImageElement> => {
+  const image = new Image();
+  if (crossOrigin) image.crossOrigin = 'anonymous';
+  image.src = url;
+  await image.decode();
+  return image;
+};
+
+/**
  * jsPDF cannot embed WebP, so every receipt is decoded to a canvas and
  * re-encoded as JPEG (brief §3). `crossOrigin` keeps the canvas untainted —
  * which needs CORS on the Storage bucket; see `storage.cors.json`.
+ *
+ * If the CORS load fails, the same URL is tried once more without it, purely
+ * to tell the two causes apart: an image that loads plainly but not with CORS
+ * means the bucket is missing its CORS policy — exactly what the in-app
+ * viewer (a plain <img>) never needs, which is why it still works there.
  */
 async function loadReceiptAsJpeg(path: string): Promise<{ dataUrl: string; width: number; height: number }> {
-  const url = await getDownloadURL(ref(storage, path));
-  const image = new Image();
-  image.crossOrigin = 'anonymous';
-  image.src = url;
-  await image.decode();
+  const url = await downloadUrl(path);
+  let image: HTMLImageElement;
+  try {
+    image = await decodeImage(url, true);
+  } catch (error) {
+    const plain = await decodeImage(url, false).then(
+      () => true,
+      () => false,
+    );
+    throw new ReceiptLoadError(plain ? 'blocked' : 'unreadable', error);
+  }
 
   const canvas = document.createElement('canvas');
   canvas.width = image.naturalWidth;
@@ -303,5 +376,10 @@ async function loadReceiptAsJpeg(path: string): Promise<{ dataUrl: string; width
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0);
-  return { dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: canvas.width, height: canvas.height };
+  try {
+    return { dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: canvas.width, height: canvas.height };
+  } catch (error) {
+    // A tainted canvas: the image loaded without usable CORS headers.
+    throw new ReceiptLoadError('blocked', error);
+  }
 }
