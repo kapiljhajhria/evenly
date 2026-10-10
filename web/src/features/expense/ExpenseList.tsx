@@ -5,6 +5,9 @@ import { Link } from 'react-router';
 import { Avatar, Button, EmptyState, Money } from '../../components/ui.js';
 import { deleteExpense, expensePermissions } from './api.js';
 import { MapLink } from './LocationField.js';
+import { ReceiptLink } from '../receipt/ReceiptViewer.js';
+import { ReceiptRetryButton } from '../receipt/ReceiptSection.js';
+import { needsAttention, viewOf } from '../receipt/status.js';
 
 function formatDate(date: string): string {
   const parsed = new Date(`${date}T00:00:00`);
@@ -52,7 +55,7 @@ export function ExpenseList({
         {expenses.map((expense) => {
           const payer = membersById[expense.paidBy];
           const myShare = expense.splits.find((s) => s.memberId === myMemberId);
-          const { canEdit, canDelete } = expensePermissions({
+          const { canEdit, canDelete, canManageReceipt } = expensePermissions({
             expense,
             payerUid: payer?.uid,
             uid,
@@ -60,9 +63,15 @@ export function ExpenseList({
             groupActive,
           });
           const isSettlement = expense.type === 'settlement';
+          const receipt = viewOf(expense);
           const receiver = isSettlement ? nameOf(expense.splits[0]?.memberId ?? '') : null;
           const hasDetail =
-            Boolean(expense.note) || Boolean(expense.location) || canEdit || canDelete || !isSettlement;
+            Boolean(expense.note) ||
+            Boolean(expense.location) ||
+            Boolean(expense.receiptPath) ||
+            canEdit ||
+            canDelete ||
+            !isSettlement;
 
           return (
             <li key={expense.id}>
@@ -80,10 +89,11 @@ export function ExpenseList({
                       {!isSettlement && <span>· {payer?.name ?? 'Someone'} paid</span>}
                       {expense.note && <span aria-label="has a note">· 📝</span>}
                       {expense.location && <span aria-label="has a location">· 📍</span>}
-                      {expense.receiptStatus === 'failed' && (
+                      {receipt === 'uploaded' && <span aria-label="has a receipt">· 🧾</span>}
+                      {needsAttention(receipt) && (
                         <span className="text-amber-600">· receipt upload failed</span>
                       )}
-                      {expense.receiptStatus === 'pending' && (
+                      {receipt === 'uploading' && (
                         <span className="text-slate-400">· uploading receipt</span>
                       )}
                     </p>
@@ -113,10 +123,18 @@ export function ExpenseList({
                     <p className="text-sm whitespace-pre-wrap text-slate-600">{expense.note}</p>
                   )}
 
-                  {expense.location && (
-                    <div className="text-sm">
-                      <MapLink location={expense.location} />
+                  {(expense.location || expense.receiptPath) && (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                      {expense.location && <MapLink location={expense.location} />}
+                      {expense.receiptPath && <ReceiptLink path={expense.receiptPath} />}
                     </div>
+                  )}
+
+                  {needsAttention(receipt) && canManageReceipt && (
+                    <p className="text-xs text-amber-700">
+                      The receipt photo did not upload.{' '}
+                      <ReceiptRetryButton groupId={groupId} expenseId={expense.id} />
+                    </p>
                   )}
 
                   {!isSettlement && (

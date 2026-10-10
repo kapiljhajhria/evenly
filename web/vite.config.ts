@@ -74,6 +74,10 @@ export default defineConfig(({ command, mode }) => {
         workbox: {
           navigateFallbackDenylist: [/^\/__/],
           globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+          // PDF export and the libraries jsPDF pulls in (~750KB) load only
+          // when someone exports. Precaching them would make every user
+          // download them on every update.
+          globIgnores: ['**/jspdf*', '**/html2canvas*', '**/purify*', '**/canvg*'],
         },
         devOptions: { enabled: false },
       }),
@@ -92,6 +96,8 @@ export default defineConfig(({ command, mode }) => {
               'firebase/functions',
               'firebase/storage',
             ],
+            // Named so the precache can exclude it; jsPDF imports it lazily.
+            canvg: ['canvg'],
           },
         },
       },

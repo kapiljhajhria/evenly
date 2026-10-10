@@ -7,6 +7,7 @@ import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { useExpense, useExpenseHistory } from '../../hooks/useExpenses.js';
 import { expensePermissions, updateExpense } from './api.js';
 import { ExpenseForm } from './ExpenseForm.js';
+import { ReceiptSection } from '../receipt/ReceiptSection.js';
 import { AppShell } from '../../components/Layout.js';
 import { Card, ErrorNote, FullPageSpinner } from '../../components/ui.js';
 
@@ -32,7 +33,7 @@ export function EditExpensePage() {
   }
 
   const myMemberId = members.find((m) => m.uid === user.uid)?.id ?? null;
-  const { canEdit } = expensePermissions({
+  const { canEdit, canManageReceipt } = expensePermissions({
     expense,
     payerUid: byId[expense.paidBy]?.uid,
     uid: user.uid,
@@ -48,6 +49,7 @@ export function EditExpensePage() {
             ? `Only ${byId[expense.paidBy]?.name ?? 'the person who paid'} can edit this. Ask them to fix it.`
             : 'This group is closed, so it is read-only.'}
         </ErrorNote>
+        <ReceiptSection groupId={groupId} expense={expense} canManage={canManageReceipt} />
         <ExpenseHistory groupId={groupId} expenseId={expenseId} membersById={byId} />
       </AppShell>
     );
@@ -100,6 +102,7 @@ export function EditExpensePage() {
         }}
       />
 
+      {!isSettlement && <ReceiptSection groupId={groupId} expense={expense} canManage={canManageReceipt} />}
       <ExpenseHistory groupId={groupId} expenseId={expenseId} membersById={byId} />
     </AppShell>
   );

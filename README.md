@@ -41,8 +41,8 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (105 tests, no emulator)
-npm run test:rules       # security rules vs the Firestore emulator (91 tests)
+npm test                 # pure logic in shared/ and web/ (133 tests, no emulator)
+npm run test:rules       # Firestore + Storage rules vs the emulators (111 tests)
 npm run test:integration # functions + real client modules (53 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
@@ -111,7 +111,12 @@ workspace-only version spec is unresolvable from the public registry.
   provider at first sign-in and is yours after that: signing in with Google
   again must never put the Google name back.
 - **The payer owns the expense.** While their slot is unclaimed, whoever recorded
-  it owns it; ownership transfers the moment the slot is claimed.
+  it owns it; ownership transfers the moment the slot is claimed. The one
+  exception is the receipt: the recorder may attach or replace it too.
+- **Receipts never block the save.** The expense is written with
+  `receiptStatus: 'pending'`, the encoded photo is parked in IndexedDB, and
+  `features/receipt/queue.ts` uploads it in the background. Clients cannot
+  delete Storage objects; clearing `receiptPath` makes `onExpenseWrite` do it.
 - **`member.uid` is written by `joinGroup` and nothing else** — including for the
   group creator's own slot. Group creation is therefore three sequenced steps
   (group doc → unclaimed slots → `joinGroup`), never one batch: member rules
@@ -126,9 +131,12 @@ tests.
 
 Also done since launch: group rename, user profile + per-group slot names,
 members page (add/remove slots), expense notes, time-of-day, optional location
-capture with a Google Maps link, and expense editing with enforced, visible
-edit history.
+capture with a Google Maps link, expense editing with enforced, visible
+edit history, and receipts (manual crop → ≤1280px WebP/JPEG → background
+upload parked in IndexedDB, resumed on app open or reconnect, with Retry;
+a `pending` older than 15 minutes is shown as failed), client-side PDF export
+(ledger and balances first, every receipt appended one per page), and
+`deleteGroup` UI (creator-only, PDF download required first).
 
-Next, per the brief §9: receipts (crop → WebP → background upload with retry),
-PDF export, `deleteGroup` UI, close flow + `autoClose` UI, PWA polish, then FCM
+Next, per the brief §9: close flow + `autoClose` UI, PWA polish, then FCM
 push in v1.5.

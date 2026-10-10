@@ -117,9 +117,15 @@ export function expensePermissions(args: {
   uid: string | undefined;
   groupCreatedBy: string;
   groupActive: boolean;
-}): { canEdit: boolean; canDelete: boolean } {
+}): { canEdit: boolean; canDelete: boolean; canManageReceipt: boolean } {
   const { expense, payerUid, uid, groupCreatedBy, groupActive } = args;
-  if (!groupActive || !uid) return { canEdit: false, canDelete: false };
+  if (!groupActive || !uid) return { canEdit: false, canDelete: false, canManageReceipt: false };
   const owns = payerUid === uid || ((payerUid ?? null) === null && expense.createdBy === uid);
-  return { canEdit: owns, canDelete: owns || groupCreatedBy === uid };
+  return {
+    canEdit: owns,
+    canDelete: owns || groupCreatedBy === uid,
+    // The recorder too: they are usually the one holding the paper receipt,
+    // even when the expense was paid by someone else. Settlements have none.
+    canManageReceipt: expense.type !== 'settlement' && (owns || expense.createdBy === uid),
+  };
 }

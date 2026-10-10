@@ -1,0 +1,7 @@
+[
+  {
+    "origin": ["https://evenly-3b82e.web.app", "https://evenly-3b82e.firebaseapp.com", "http://localhost:5173"],
+    "method": ["GET"],
+    "maxAgeSeconds": 3600
+  }
+]

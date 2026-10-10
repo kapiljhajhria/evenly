@@ -14,12 +14,20 @@ service firebase.storage {
       return firestore.exists(/databases/(default)/documents/groups/$(groupId)/expenses/$(expenseId));
     }
 
+    // The client only ever produces {expenseId}.webp, or .jpg where the
+    // browser cannot encode WebP — and the extension must match the type.
+    function receiptFile(fileName) {
+      return (fileName.matches('^[A-Za-z0-9_-]+[.]webp$') && request.resource.contentType == 'image/webp')
+        || (fileName.matches('^[A-Za-z0-9_-]+[.]jpg$') && request.resource.contentType == 'image/jpeg');
+    }
+
     match /receipts/{groupId}/{fileName} {
       allow read: if isMember(groupId);
 
-      allow write: if isMember(groupId)
+      // create + update only: `write` would include delete.
+      allow create, update: if isMember(groupId)
+        && receiptFile(fileName)
         && expenseExists(groupId, fileName.split('[.]')[0])
-        && request.resource.contentType.matches('image/.*')
         && request.resource.size <= 1 * 1024 * 1024;
 
       // onExpenseWrite / deleteGroup handle removal.

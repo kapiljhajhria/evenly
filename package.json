@@ -17,7 +17,7 @@
     "typecheck": "npm run typecheck -w shared && npm run typecheck -w web && npm run typecheck -w functions",
     "test": "vitest run",
     "test:shared": "vitest run shared",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-expense-splitter \"vitest run --config tests/rules/vitest.config.ts\"",
+    "test:rules": "firebase emulators:exec --only firestore,storage --project demo-expense-splitter-rules \"vitest run --config tests/rules/vitest.config.ts\"",
     "emulators": "firebase emulators:start --project demo-expense-splitter",
     "emulators:exec": "firebase emulators:exec",
     "dev:all": "concurrently -n emu,web -c magenta,cyan \"npm run emulators\" \"npm run dev -w web\"",

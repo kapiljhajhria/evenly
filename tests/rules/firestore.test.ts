@@ -458,6 +458,29 @@ describe('expenses: ownership', () => {
     );
   });
 
+  it('lets the recorder attach a receipt after the payer has claimed their slot', async () => {
+    // Alice recorded it and holds the paper receipt; Bob paid and owns it.
+    await assertSucceeds(
+      updateDoc(doc(as(ALICE), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), {
+        receiptStatus: 'pending',
+        receiptPath: null,
+      }),
+    );
+  });
+
+  it('gives the recorder receipt fields only, never content', async () => {
+    await assertFails(
+      updateDoc(doc(as(ALICE), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), { description: 'Mine now' }),
+    );
+  });
+
+  it('blocks a member who neither paid nor recorded from touching receipt fields', async () => {
+    await seedExpense(env, 'alice-own', { paidBy: SLOT_ALICE, createdBy: ALICE });
+    await assertFails(
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'alice-own'), { receiptStatus: 'failed' }),
+    );
+  });
+
   it('blocks smuggling a money change alongside a receipt patch', async () => {
     await assertFails(
       updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), {

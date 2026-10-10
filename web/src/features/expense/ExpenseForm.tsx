@@ -12,6 +12,8 @@ import { Button, ErrorNote, Field, Input } from '../../components/ui.js';
 import { SplitEditor } from './SplitEditor.js';
 import { LocationField } from './LocationField.js';
 import { useLocationCapture } from './useLocation.js';
+import { ReceiptField } from '../receipt/ReceiptPicker.js';
+import type { EncodedReceipt } from '../receipt/encode.js';
 
 export interface ExpenseFormValues {
   description: string;
@@ -23,6 +25,8 @@ export interface ExpenseFormValues {
   paidBy: string;
   splitType: SplitType;
   splitInputs: { memberId: string; input: number }[];
+  /** Only ever set when the form was rendered `withReceipt`. */
+  receipt: EncodedReceipt | null;
 }
 
 export interface ExpenseFormInitial {
@@ -43,6 +47,9 @@ export interface ExpenseFormInitial {
  * `settlementMode` strips it back to the fields a settlement actually has —
  * a settlement is one line from payer to receiver, so its split is derived
  * from the amount rather than edited.
+ *
+ * `withReceipt` adds the receipt picker. Only the add screen uses it: on the
+ * edit screen the receipt is managed on its own, outside updateExpense.
  */
 export function ExpenseForm({
   members,
@@ -50,6 +57,7 @@ export function ExpenseForm({
   initial,
   submitLabel,
   settlementMode = false,
+  withReceipt = false,
   onSubmit,
 }: {
   members: WithId<Member<Timestamp>>[];
@@ -57,6 +65,7 @@ export function ExpenseForm({
   initial?: ExpenseFormInitial;
   submitLabel: string;
   settlementMode?: boolean;
+  withReceipt?: boolean;
   onSubmit: (values: ExpenseFormValues) => Promise<void>;
 }) {
   const [description, setDescription] = useState(initial?.description ?? '');
@@ -71,6 +80,7 @@ export function ExpenseForm({
   const [splitValue, setSplitValue] = useState<Record<string, number>>(
     initial?.splitValue ?? Object.fromEntries(members.map((m) => [m.id, 1])),
   );
+  const [receipt, setReceipt] = useState<EncodedReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,6 +102,7 @@ export function ExpenseForm({
         paidBy,
         splitType,
         splitInputs: Object.entries(splitValue).map(([memberId, input]) => ({ memberId, input })),
+        receipt: withReceipt ? receipt : null,
       });
     } catch (err) {
       setError((err as Error).message);
@@ -164,6 +175,8 @@ export function ExpenseForm({
       <Field label="Location">
         <LocationField capture={locationCapture} />
       </Field>
+
+      {withReceipt && !settlementMode && <ReceiptField value={receipt} onChange={setReceipt} />}
 
       {!settlementMode && (
         <SplitEditor

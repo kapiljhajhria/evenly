@@ -3,6 +3,7 @@ import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { addExpense } from './api.js';
 import { ExpenseForm } from './ExpenseForm.js';
+import { queueReceipt } from '../receipt/queue.js';
 import { AppShell } from '../../components/Layout.js';
 import { FullPageSpinner } from '../../components/ui.js';
 
@@ -25,6 +26,7 @@ export function AddExpensePage() {
         members={members}
         myMemberId={myMemberId}
         submitLabel="Save expense"
+        withReceipt
         initial={{
           // The group default pre-fills the split and stays editable.
           ...(defaults?.entries.length
@@ -35,7 +37,7 @@ export function AddExpensePage() {
             : {}),
         }}
         onSubmit={async (values) => {
-          await addExpense({
+          const expenseId = await addExpense({
             groupId,
             description: values.description,
             note: values.note,
@@ -47,7 +49,19 @@ export function AddExpensePage() {
             splitType: values.splitType,
             splitInputs: values.splitInputs,
             createdBy: user.uid,
+            receiptPending: values.receipt !== null,
           });
+          if (values.receipt) {
+            // Resolves once the photo is parked locally; the upload carries on
+            // in the background after we navigate away.
+            await queueReceipt({
+              uid: user.uid,
+              groupId,
+              expenseId,
+              receipt: values.receipt,
+              alreadyPending: true,
+            });
+          }
           navigate(`/group/${groupId}`, { replace: true });
         }}
       />

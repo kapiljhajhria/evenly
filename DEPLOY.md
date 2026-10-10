@@ -109,6 +109,22 @@ The first `deploy:functions` asks to enable Cloud Build, Artifact Registry,
 Cloud Run, Eventarc, Pub/Sub and Cloud Scheduler. Say yes to all — `autoClose`
 is a scheduled function and `onExpenseWrite` is an Eventarc trigger.
 
+### Storage CORS — once, for PDF export
+
+PDF export draws each receipt onto a canvas to re-encode it as JPEG, and a
+canvas will not read pixels from another origin without CORS. The bucket has
+no CORS policy by default, so without this step every receipt page in the PDF
+says "could not be loaded" (viewing receipts in the app is unaffected).
+
+```bash
+gcloud storage buckets update gs://YOUR_BUCKET --cors-file=storage.cors.json
+gcloud storage buckets describe gs://YOUR_BUCKET --format="default(cors_config)"
+```
+
+`YOUR_BUCKET` is `VITE_FIREBASE_STORAGE_BUCKET` from step 6. `storage.cors.json`
+allows GET from the two hosting domains and `localhost:5173`; add any custom
+domain you serve the app from.
+
 ## Prompts you will be asked, and what to answer
 
 The CLI is interactive on a first deploy. None of these are trick questions,

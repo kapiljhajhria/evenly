@@ -1,0 +1,19 @@
+import { collection, collectionGroup, doc } from 'firebase/firestore';
+import { db } from './firebase.js';
+
+export const groupsCol = () => collection(db, 'groups');
+export const groupDoc = (groupId: string) => doc(db, 'groups', groupId);
+export const membersCol = (groupId: string) => collection(db, 'groups', groupId, 'members');
+export const memberDoc = (groupId: string, memberId: string) =>
+  doc(db, 'groups', groupId, 'members', memberId);
+export const expensesCol = (groupId: string) => collection(db, 'groups', groupId, 'expenses');
+export const expenseDoc = (groupId: string, expenseId: string) =>
+  doc(db, 'groups', groupId, 'expenses', expenseId);
+export const historyCol = (groupId: string, expenseId: string) =>
+  collection(db, 'groups', groupId, 'expenses', expenseId, 'history');
+export const userDoc = (uid: string) => doc(db, 'users', uid);
+/** Powers the home page: every slot claimed by me, across all groups. */
+export const allMembers = () => collectionGroup(db, 'members');
+
+export const receiptPath = (groupId: string, expenseId: string, ext: 'webp' | 'jpg') =>
+  `receipts/${groupId}/${expenseId}.${ext}`;

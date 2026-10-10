@@ -7,6 +7,8 @@ import { Button, Card, ErrorNote, FullPageSpinner } from '../../components/ui.js
 import { BalancePanel } from './BalancePanel.js';
 import { EditableGroupName } from './EditableGroupName.js';
 import { ExpenseList } from '../expense/ExpenseList.js';
+import { ExportButton } from '../export/ExportButton.js';
+import { DeleteGroupCard } from './DeleteGroupCard.js';
 
 export function GroupPage() {
   const { id: groupId } = useParams<{ id: string }>();
@@ -28,6 +30,7 @@ export function GroupPage() {
   const isCreator = group.createdBy === user?.uid;
   const isActive = group.status === 'active';
   const openSlots = members.filter((m) => m.uid === null).length;
+  const exportMembers = members.map((m) => ({ id: m.id, name: m.name }));
 
   return (
     <AppShell
@@ -77,6 +80,32 @@ export function GroupPage() {
         hasMore={hasMore}
         onLoadMore={loadMore}
       />
+
+      <Card className="space-y-3">
+        <div>
+          <p className="font-semibold">Export</p>
+          <p className="text-sm text-slate-500">
+            A PDF of every expense and balance, with all receipts at the end.
+          </p>
+        </div>
+        <ExportButton
+          groupId={groupId}
+          groupName={group.name}
+          closed={!isActive}
+          balances={group.balances ?? {}}
+          members={exportMembers}
+        />
+      </Card>
+
+      {isCreator && (
+        <DeleteGroupCard
+          groupId={groupId}
+          groupName={group.name}
+          closed={!isActive}
+          balances={group.balances ?? {}}
+          members={exportMembers}
+        />
+      )}
     </AppShell>
   );
 }

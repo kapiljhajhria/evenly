@@ -246,9 +246,11 @@ service cloud.firestore {
       // The one exception is the receipt fields: the upload runs in the
       // background after the expense is saved and retries on failure, so it
       // needs a direct patch. It cannot touch anything that affects money.
+      // The recorder may attach one too, even when someone else paid — they
+      // are the person holding the paper.
       allow update: if isMember(groupId)
         && isActive(groupId)
-        && ownsExpense()
+        && (ownsExpense() || resource.data.createdBy == uid())
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['receiptStatus', 'receiptPath', 'updatedAt'])
         && request.resource.data.receiptStatus in ['none', 'pending', 'uploaded', 'failed'];
