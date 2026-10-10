@@ -1,9 +1,11 @@
 import { useRef } from 'react';
 import { formatDate } from '@app/shared';
+import { useInputDateFormat } from '../stores/preferences.js';
 
 /**
- * A date input that always READS dd/mm/yy, whatever language the phone is
- * set to, while still opening the phone's own calendar to pick from.
+ * A date input that READS in the chosen format (dd/mm/yyyy unless changed
+ * in Settings), whatever language the phone is set to, while still opening
+ * the phone's own calendar to pick from.
  *
  * A native `<input type="date">` renders its text in the device locale — on a
  * US-English phone that is 10/22/2026 — and offers no way to change it. So
@@ -24,12 +26,13 @@ export function DateField({
   label?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const format = useInputDateFormat();
 
   return (
     <div className="relative min-h-11 w-full rounded-xl bg-white ring-1 ring-slate-200 focus-within:ring-2 focus-within:ring-brand-500">
       <div aria-hidden className="pointer-events-none flex min-h-11 items-center justify-between gap-2 px-3 text-base">
         <span className={`tabular ${value ? 'text-slate-900' : 'text-slate-400'}`}>
-          {value ? formatDate(value) : 'dd/mm/yy'}
+          {value ? formatDate(value, format) : format}
         </span>
         <svg viewBox="0 0 24 24" className="size-5 shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="3" y="5" width="18" height="16" rx="2" />

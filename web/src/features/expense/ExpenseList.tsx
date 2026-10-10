@@ -1,6 +1,8 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { Expense, Member, WithId } from '@app/shared';
+import type { DateFormat } from '@app/shared';
 import { formatDate, formatPaise, formatTime, usableParts } from '@app/shared';
+import { useDisplayDateFormat } from '../../stores/preferences.js';
 import { Link } from 'react-router';
 import { Avatar, Button, EmptyState, Money } from '../../components/ui.js';
 import { deleteExpense, expensePermissions } from './api.js';
@@ -12,10 +14,11 @@ import type { CommentsByExpense } from '../../hooks/useExpenses.js';
 import { CommentThread } from './CommentThread.js';
 import { UnconfirmedNotice } from './UnconfirmedNotice.js';
 
-/** "22/08/26 · 7:05 pm" — the time half is skipped on expenses that predate it. */
-function formatWhen(expense: Expense<Timestamp>): string {
+/** "15-aug-26 · 7:05 pm" — the time half is skipped on expenses that predate it. */
+function formatWhen(expense: Expense<Timestamp>, format: DateFormat): string {
   const time = formatTime(expense.time);
-  return time ? `${formatDate(expense.date)} · ${time}` : formatDate(expense.date);
+  const date = formatDate(expense.date, format);
+  return time ? `${date} · ${time}` : date;
 }
 
 export function ExpenseList({
@@ -45,6 +48,7 @@ export function ExpenseList({
     return <EmptyState title="Nothing here yet" body="Add the first expense and balances start moving." />;
   }
 
+  const dateFormat = useDisplayDateFormat();
   const nameOf = (memberId: string): string => membersById[memberId]?.name ?? 'Removed member';
   const members = Object.values(membersById);
 
@@ -99,7 +103,7 @@ export function ExpenseList({
                         : expense.description}
                     </p>
                     <p className="flex flex-wrap items-center gap-x-1 text-xs text-slate-500">
-                      <span>{formatWhen(expense)}</span>
+                      <span>{formatWhen(expense, dateFormat)}</span>
                       {!isSettlement && <span>· {payer?.name ?? 'Someone'} paid</span>}
                       {parts && <span>· {parts.length} transfers</span>}
                       {thread.length > 0 && (

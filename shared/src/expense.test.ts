@@ -4,6 +4,8 @@ import {
   formatDateOf,
   formatDateTimeOf,
   formatTime,
+  DATE_FORMATS,
+  isDateFormat,
   isValidLocation,
   isValidTime,
   localDateString,
@@ -148,26 +150,52 @@ describe('usableParts', () => {
 });
 
 describe('formatDate', () => {
-  it('writes dates day first as dd/mm/yy', () => {
-    expect(formatDate('2026-08-22')).toBe('22/08/26');
-    expect(formatDate('2026-01-05')).toBe('05/01/26');
-    expect(formatDate('2031-12-31')).toBe('31/12/31');
+  it('defaults to dd-mon-yy for lists', () => {
+    expect(formatDate('2026-08-15')).toBe('15-aug-26');
+    expect(formatDate('2026-01-05')).toBe('05-jan-26');
+  });
+
+  it.each([
+    ['dd-mon-yy', '15-aug-26'],
+    ['dd-Mon-yy', '15-Aug-26'],
+    ['dd/mm/yy', '15/08/26'],
+    ['dd/mm/yyyy', '15/08/2026'],
+    ['d Mon yyyy', '15 Aug 2026'],
+    ['mm/dd/yyyy', '08/15/2026'],
+    ['yyyy-mm-dd', '2026-08-15'],
+  ] as const)('writes %s as %s', (format, expected) => {
+    expect(formatDate('2026-08-15', format)).toBe(expected);
+  });
+
+  it('gives every listed format a distinct rendering', () => {
+    const outputs = DATE_FORMATS.map((format) => formatDate('2031-12-05', format));
+    expect(new Set(outputs).size).toBe(DATE_FORMATS.length);
   });
 
   it('passes anything malformed through untouched', () => {
     expect(formatDate('22 Aug')).toBe('22 Aug');
     expect(formatDate('')).toBe('');
+    expect(formatDate('2026-13-01')).toBe('2026-13-01');
+  });
+});
+
+describe('isDateFormat', () => {
+  it('accepts only known formats, so a stale saved setting falls back', () => {
+    expect(isDateFormat('dd/mm/yyyy')).toBe(true);
+    expect(isDateFormat('dd.mm.yyyy')).toBe(false);
+    expect(isDateFormat(null)).toBe(false);
   });
 });
 
 describe('formatDateOf / formatDateTimeOf', () => {
-  it('uses local time, day first', () => {
+  it('uses local time', () => {
     const at = new Date(2026, 0, 5, 19, 5);
-    expect(formatDateOf(at)).toBe('05/01/26');
-    expect(formatDateTimeOf(at)).toBe('05/01/26, 7:05 pm');
+    expect(formatDateOf(at)).toBe('05-jan-26');
+    expect(formatDateOf(at, 'dd/mm/yyyy')).toBe('05/01/2026');
+    expect(formatDateTimeOf(at)).toBe('05-jan-26, 7:05 pm');
   });
 
   it('formats midnight as 12 am', () => {
-    expect(formatDateTimeOf(new Date(2026, 9, 10, 0, 0))).toBe('10/10/26, 12:00 am');
+    expect(formatDateTimeOf(new Date(2026, 9, 10, 0, 0), 'dd/mm/yy')).toBe('10/10/26, 12:00 am');
   });
 });

@@ -99,6 +99,9 @@ export function ProfilePage() {
           <p className="font-semibold">Account</p>
           <p className="text-sm text-slate-500">Signed in with {provider}.</p>
         </div>
+        <Link to="/settings" className="block text-center text-sm text-brand-600 hover:underline">
+          Settings — date format
+        </Link>
         <Button variant="secondary" className="w-full" onClick={() => void signOutUser()}>
           Sign out
         </Button>

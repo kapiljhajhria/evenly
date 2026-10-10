@@ -10,6 +10,7 @@ import { MembersPage } from '../features/group/MembersPage.js';
 import { AddExpensePage } from '../features/expense/AddExpensePage.js';
 import { EditExpensePage } from '../features/expense/EditExpensePage.js';
 import { SettleUpPage } from '../features/expense/SettleUpPage.js';
+import { SettingsPage } from '../features/settings/SettingsPage.js';
 
 const protect = (element: React.ReactNode) => <RequireAuth>{element}</RequireAuth>;
 
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
   { path: '/', element: protect(<HomePage />) },
   { path: '/new', element: protect(<CreateGroupPage />) },
   { path: '/profile', element: protect(<ProfilePage />) },
+  { path: '/settings', element: protect(<SettingsPage />) },
   { path: '/group/:id', element: protect(<GroupPage />) },
   { path: '/group/:id/members', element: protect(<MembersPage />) },
   { path: '/group/:id/add', element: protect(<AddExpensePage />) },

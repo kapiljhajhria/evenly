@@ -102,24 +102,74 @@ export function formatTime(time: string | null | undefined): string | null {
 const pad2 = (n: number): string => String(n).padStart(2, '0');
 
 /**
- * `2026-08-22` → `22/08/26`. Day first, as most of the world writes it, and
- * the same on every device — deliberately not the browser locale, which on a
- * US-English phone would print 08/22/26. String-sliced, so no timezone can
- * shift the day. Anything that is not a `YYYY-MM-DD` comes back unchanged.
+ * Ways a date can be SHOWN. Display only — every date is stored as
+ * `YYYY-MM-DD` whatever is picked here, so changing the setting never touches
+ * data. Day-first by default, as most of the world writes it.
  */
-export function formatDate(date: string): string {
-  const match = /^(\d{2})(\d{2})-(\d{2})-(\d{2})$/.exec(date);
-  return match ? `${match[4]}/${match[3]}/${match[2]}` : date;
+export const DATE_FORMATS = [
+  'dd-mon-yy', //   15-aug-26
+  'dd-Mon-yy', //   15-Aug-26
+  'dd/mm/yy', //    15/08/26
+  'dd/mm/yyyy', //  15/08/2026
+  'd Mon yyyy', //  15 Aug 2026
+  'mm/dd/yyyy', //  08/15/2026
+  'yyyy-mm-dd', //  2026-08-15
+] as const;
+export type DateFormat = (typeof DATE_FORMATS)[number];
+
+/** Expense list, history, comments, PDF. */
+export const DEFAULT_DISPLAY_DATE_FORMAT: DateFormat = 'dd-mon-yy';
+/** The date field when adding or editing an expense. */
+export const DEFAULT_INPUT_DATE_FORMAT: DateFormat = 'dd/mm/yyyy';
+
+export const isDateFormat = (value: unknown): value is DateFormat =>
+  typeof value === 'string' && (DATE_FORMATS as readonly string[]).includes(value);
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+function render(year: number, month: number, day: number, format: DateFormat): string {
+  const mon = MONTHS[month - 1] ?? '';
+  const Mon = mon.charAt(0).toUpperCase() + mon.slice(1);
+  const yy = pad2(year % 100);
+  switch (format) {
+    case 'dd-mon-yy':
+      return `${pad2(day)}-${mon}-${yy}`;
+    case 'dd-Mon-yy':
+      return `${pad2(day)}-${Mon}-${yy}`;
+    case 'dd/mm/yy':
+      return `${pad2(day)}/${pad2(month)}/${yy}`;
+    case 'dd/mm/yyyy':
+      return `${pad2(day)}/${pad2(month)}/${year}`;
+    case 'd Mon yyyy':
+      return `${day} ${Mon} ${year}`;
+    case 'mm/dd/yyyy':
+      return `${pad2(month)}/${pad2(day)}/${year}`;
+    case 'yyyy-mm-dd':
+      return `${year}-${pad2(month)}-${pad2(day)}`;
+  }
 }
 
-/** A moment, in local time, as `22/08/26`. */
-export function formatDateOf(at: Date): string {
-  return `${pad2(at.getDate())}/${pad2(at.getMonth() + 1)}/${pad2(at.getFullYear() % 100)}`;
+/**
+ * A stored `2026-08-15` in the chosen format (`15-aug-26` by default).
+ * Parsed from the string, never through Date, so no timezone can move the
+ * day. Anything that is not a valid `YYYY-MM-DD` comes back unchanged.
+ */
+export function formatDate(date: string, format: DateFormat = DEFAULT_DISPLAY_DATE_FORMAT): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return date;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  if (month < 1 || month > 12 || day < 1 || day > 31) return date;
+  return render(year, month, day, format);
 }
 
-/** A moment, in local time, as `22/08/26, 7:05 pm`. */
-export function formatDateTimeOf(at: Date): string {
-  return `${formatDateOf(at)}, ${formatTime(`${pad2(at.getHours())}:${pad2(at.getMinutes())}`)}`;
+/** A moment, in local time, in the chosen format. */
+export function formatDateOf(at: Date, format: DateFormat = DEFAULT_DISPLAY_DATE_FORMAT): string {
+  return render(at.getFullYear(), at.getMonth() + 1, at.getDate(), format);
+}
+
+/** A moment, in local time: `15-aug-26, 7:05 pm`. */
+export function formatDateTimeOf(at: Date, format: DateFormat = DEFAULT_DISPLAY_DATE_FORMAT): string {
+  return `${formatDateOf(at, format)}, ${formatTime(`${pad2(at.getHours())}:${pad2(at.getMinutes())}`)}`;
 }
 
 /** Local `YYYY-MM-DD` / `HH:mm` — NOT UTC, which would shift the date in IST. */

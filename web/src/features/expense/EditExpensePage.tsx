@@ -3,6 +3,8 @@ import type { Timestamp } from 'firebase/firestore';
 import type { Member, WithId } from '@app/shared';
 import { formatDate, formatDateTimeOf, formatPaise, formatTime, usableParts } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
+import { useDisplayDateFormat } from '../../stores/preferences.js';
+import type { DateFormat } from '@app/shared';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { useComments, useExpense, useExpenseHistory } from '../../hooks/useExpenses.js';
 import { expensePermissions, updateExpense } from './api.js';
@@ -155,7 +157,12 @@ const FIELD_LABELS: Record<string, string> = {
   unconfirmed: 'Status',
 };
 
-function describeValue(field: string, value: unknown, membersById: Record<string, WithId<Member<Timestamp>>>): string {
+function describeValue(
+  field: string,
+  value: unknown,
+  membersById: Record<string, WithId<Member<Timestamp>>>,
+  dateFormat: DateFormat,
+): string {
   if (field === 'unconfirmed') return value === true ? 'not confirmed' : 'confirmed';
   // Before any other check: a null breakdown reads "one amount", not "empty".
   if (field === 'parts') {
@@ -166,7 +173,7 @@ function describeValue(field: string, value: unknown, membersById: Record<string
   if (field === 'amountPaise') return formatPaise(value as number);
   if (field === 'paidBy') return membersById[value as string]?.name ?? 'someone';
   if (field === 'time') return formatTime(value as string) ?? String(value);
-  if (field === 'date') return formatDate(String(value));
+  if (field === 'date') return formatDate(String(value), dateFormat);
   if (field === 'location') return 'a location';
   if (field === 'splits') return 'the split';
   return String(value);
@@ -183,6 +190,7 @@ function ExpenseHistory({
   membersById: Record<string, WithId<Member<Timestamp>>>;
 }) {
   const { entries, loading } = useExpenseHistory(groupId, expenseId);
+  const dateFormat = useDisplayDateFormat();
   if (loading || entries.length === 0) return null;
 
   const nameOfUid = (uid: string): string =>
@@ -200,14 +208,14 @@ function ExpenseHistory({
             <p className="text-slate-600">
               {nameOfUid(entry.editedBy)} ·{' '}
               <span className="text-slate-400">
-                {entry.editedAt ? formatDateTimeOf(entry.editedAt.toDate()) : 'just now'}
+                {entry.editedAt ? formatDateTimeOf(entry.editedAt.toDate(), dateFormat) : 'just now'}
               </span>
             </p>
             <ul className="mt-1 space-y-0.5 text-xs text-slate-500">
               {Object.entries(entry.before as Record<string, unknown>).map(([field, value]) => (
                 <li key={field}>
                   {FIELD_LABELS[field] ?? field} was{' '}
-                  <span className="text-slate-700">{describeValue(field, value, membersById)}</span>
+                  <span className="text-slate-700">{describeValue(field, value, membersById, dateFormat)}</span>
                 </li>
               ))}
             </ul>

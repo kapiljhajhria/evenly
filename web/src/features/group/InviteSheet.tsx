@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Timestamp } from 'firebase/firestore';
 import { formatDateOf } from '@app/shared';
+import { useDisplayDateFormat } from '../../stores/preferences.js';
 import { Button, Card } from '../../components/ui.js';
 import { inviteUrl, whatsappShareUrl } from '../../lib/invite.js';
 import { rotateInviteToken } from './api.js';
@@ -18,6 +19,7 @@ export function InviteSheet({
   expiresAt: Timestamp;
   isCreator: boolean;
 }) {
+  const dateFormat = useDisplayDateFormat();
   const [copied, setCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
 
@@ -45,7 +47,7 @@ export function InviteSheet({
         <p className="text-sm text-slate-500">
           {expired
             ? 'This link has expired. Generate a new one.'
-            : `Anyone with this link can claim an open spot. Expires ${formatDateOf(expiresAt.toDate())}.`}
+            : `Anyone with this link can claim an open spot. Expires ${formatDateOf(expiresAt.toDate(), dateFormat)}.`}
         </p>
       </div>
 

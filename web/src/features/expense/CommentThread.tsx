@@ -4,6 +4,7 @@ import type { ExpenseComment, Member, WithId } from '@app/shared';
 import { formatDateTimeOf, MAX_COMMENT_LENGTH } from '@app/shared';
 import { Avatar, Button } from '../../components/ui.js';
 import { addComment, deleteComment } from './api.js';
+import { useDisplayDateFormat } from '../../stores/preferences.js';
 
 /**
  * Discussion on one expense — "I think Bilal paid this?" Any member can post;
@@ -27,6 +28,7 @@ export function CommentThread({
   isCreator: boolean;
   groupActive: boolean;
 }) {
+  const dateFormat = useDisplayDateFormat();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +65,7 @@ export function CommentThread({
                 <div className="min-w-0 flex-1 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
                   <p className="flex flex-wrap items-baseline gap-x-2 text-xs text-slate-500">
                     <span className="font-medium text-slate-700">{mine ? 'You' : (author?.name ?? 'Former member')}</span>
-                    <span>{comment.createdAt ? formatDateTimeOf(comment.createdAt.toDate()) : 'just now'}</span>
+                    <span>{comment.createdAt ? formatDateTimeOf(comment.createdAt.toDate(), dateFormat) : 'just now'}</span>
                     {groupActive && (mine || isCreator) && (
                       <button
                         type="button"

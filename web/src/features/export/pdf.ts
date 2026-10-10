@@ -5,6 +5,7 @@ import { storage } from '../../lib/firebase.js';
 import { expensesCol } from '../../lib/paths.js';
 import { buildExport, exportFileName, pdfMoney, type ExportModel } from './model.js';
 import { insertionIndices, receiptKind } from '../receipt/kind.js';
+import { usePreferences } from '../../stores/preferences.js';
 
 export type ExportProgress =
   | { step: 'loading' }
@@ -79,6 +80,7 @@ export async function exportGroupPdf(args: {
     balances: args.balances,
     expenses,
     generatedAt,
+    dateFormat: usePreferences.getState().displayDateFormat,
   });
 
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });

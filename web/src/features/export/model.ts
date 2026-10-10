@@ -1,5 +1,6 @@
 import type { BalanceMap, Expense } from '@app/shared';
-import { formatDate, formatDateTimeOf, formatPaise, formatTime, netFor, suggestSettlements, usableParts } from '@app/shared';
+import type { DateFormat } from '@app/shared';
+import { DEFAULT_DISPLAY_DATE_FORMAT, formatDate, formatDateTimeOf, formatPaise, formatTime, netFor, suggestSettlements, usableParts } from '@app/shared';
 
 /**
  * Everything the PDF says, worked out without jsPDF or the DOM so it can be
@@ -22,6 +23,8 @@ export interface ExportInput {
    */
   expenses: ExportExpense[];
   generatedAt: Date;
+  /** The exporting person's display setting; the list's default otherwise. */
+  dateFormat?: DateFormat;
 }
 
 export interface ExportReceipt {
@@ -52,8 +55,9 @@ export interface ExportModel {
  */
 export const pdfMoney = (paise: number): string => `Rs ${formatPaise(paise, { symbol: false })}`;
 
-/** Same dd/mm/yy as the app, so the PDF and the screen never disagree. */
-export const pdfDate = formatDate;
+/** Same format as the exporter sees in the app, so PDF and screen agree. */
+export const pdfDate = (date: string, format: DateFormat = DEFAULT_DISPLAY_DATE_FORMAT): string =>
+  formatDate(date, format);
 
 /** Ledger order: date, then time where it was recorded. Stable otherwise. */
 function chronological(expenses: ExportExpense[]): ExportExpense[] {
@@ -76,6 +80,7 @@ function transferLines(expense: ExportExpense): string {
 }
 
 export function buildExport(input: ExportInput): ExportModel {
+  const dateFormat = input.dateFormat ?? DEFAULT_DISPLAY_DATE_FORMAT;
   const names = new Map(input.members.map((m) => [m.id, m.name]));
   const nameOf = (memberId: string): string => names.get(memberId) ?? 'Removed member';
   const expenses = chronological(input.expenses);
@@ -93,7 +98,7 @@ export function buildExport(input: ExportInput): ExportModel {
         ? `${payer} paid ${nameOf(expense.splits[0]?.memberId ?? '')} (settlement)`
         : expense.description) + (expense.unconfirmed ? ' [NOT CONFIRMED]' : '');
     const time = formatTime(expense.time);
-    const when = time ? `${pdfDate(expense.date)}\n${time}` : pdfDate(expense.date);
+    const when = time ? `${pdfDate(expense.date, dateFormat)}\n${time}` : pdfDate(expense.date, dateFormat);
 
     if (isSettlement) settlementCount += 1;
     else spentPaise += expense.amountPaise;
@@ -111,7 +116,7 @@ export function buildExport(input: ExportInput): ExportModel {
     if (expense.receiptPath) {
       receipts.push({
         path: expense.receiptPath,
-        caption: `${pdfDate(expense.date)} · ${description} · ${pdfMoney(expense.amountPaise)} · paid by ${payer}`,
+        caption: `${pdfDate(expense.date, dateFormat)} · ${description} · ${pdfMoney(expense.amountPaise)} · paid by ${payer}`,
       });
     }
   }
@@ -130,7 +135,7 @@ export function buildExport(input: ExportInput): ExportModel {
 
   return {
     title: input.groupName,
-    subtitle: `${input.closed ? 'Closed group' : 'Active group'} · exported ${formatDateTimeOf(input.generatedAt)}`,
+    subtitle: `${input.closed ? 'Closed group' : 'Active group'} · exported ${formatDateTimeOf(input.generatedAt, dateFormat)}`,
     totals: { spentPaise, expenseCount: expenses.length - settlementCount, settlementCount },
     balanceRows,
     transferRows,
