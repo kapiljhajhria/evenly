@@ -205,8 +205,27 @@ service cloud.firestore {
               && request.resource.data.location.keys().hasOnly(['lat', 'lng', 'accuracy', 'name']));
       }
 
+      // A settlement paid in several transfers (MAX_PARTS in
+      // shared/src/expense.ts). Shape only — deliberately NOT the per-transfer
+      // checks or the sum. Rules stop at 1000 evaluated expressions per
+      // request and this create already spends most of them on membership and
+      // the splits sum: unrolled per-transfer checks run out at ~7 transfers.
+      //
+      // That is safe because nothing reads `parts` for money — balances come
+      // from amountPaise and splits only. The app shows a breakdown only when
+      // it is well-formed and sums exactly to the amount (`usableParts` in
+      // shared), and updateExpense validates it fully on every edit.
+      function validParts(data) {
+        return data.get('parts', null) == null
+          || (data.type == 'settlement'
+              && data.parts is list
+              && data.parts.size() >= 2
+              && data.parts.size() <= 20);
+      }
+
       function wellFormed() {
         return validNote()
+          && validParts(request.resource.data)
           && validTime()
           && validLocation()
           && request.resource.data.amountPaise is int

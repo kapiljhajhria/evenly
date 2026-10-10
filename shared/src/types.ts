@@ -63,6 +63,17 @@ export interface ExpenseLocation {
   name: string | null;
 }
 
+/**
+ * One transfer inside a settlement paid in several goes — 11 UPI transfers
+ * recorded as one payment. Informational only: balances read `amountPaise`,
+ * which must equal the sum of the parts.
+ */
+export interface SettlementPart {
+  amountPaise: Paise;
+  /** e.g. a UPI reference. */
+  note?: string | null;
+}
+
 export interface DefaultSplit {
   type: 'portions';
   entries: { memberId: MemberId; portions: number }[];
@@ -119,6 +130,12 @@ export interface Expense<TS = TimestampLike> {
    */
   time?: string | null;
   location?: ExpenseLocation | null;
+  /**
+   * Settlements only, optional: the individual transfers that make up
+   * `amountPaise`, 2–MAX_PARTS of them, summing exactly to it. Absent or null
+   * on everything else, and on every payment recorded before it existed.
+   */
+  parts?: SettlementPart[] | null;
   amountPaise: Paise;
   /** Exactly one payer. Multi-payer is deliberately not supported. */
   paidBy: MemberId;

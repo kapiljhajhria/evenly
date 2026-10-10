@@ -282,4 +282,99 @@ describe('updateExpense', () => {
     const splits = (await readExpense(ref.id))['splits'] as { memberId: string; owedPaise: number }[];
     expect(splits).toEqual([{ memberId: OWNER, input: 50000, owedPaise: 50000 }]);
   });
+
+  describe('settlement transfers', () => {
+    const parts = [
+      { amountPaise: 30000, note: 'UPI 1' },
+      { amountPaise: 15000, note: null },
+    ];
+
+    async function seedBatchPayment(): Promise<string> {
+      const ref = await expensesRef().add({
+        type: 'settlement',
+        description: 'Settled up',
+        date: '2026-08-02',
+        amountPaise: 45000,
+        paidBy: PAYER,
+        createdBy: payer.uid,
+        splitType: 'amount',
+        splits: settlementSplits(OWNER, 45000),
+        parts,
+        receiptStatus: 'none',
+        receiptPath: null,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return ref.id;
+    }
+
+    it('replaces the breakdown and sets the amount to its sum', async () => {
+      const id = await seedBatchPayment();
+      const next = [...parts, { amountPaise: 5001, note: ' cash ' }];
+      const call = await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { parts: next } });
+      expect(call.ok, call.message).toBe(true);
+
+      const stored = await readExpense(id);
+      expect(stored['amountPaise']).toBe(50001);
+      expect(stored['parts']).toEqual([parts[0], parts[1], { amountPaise: 5001, note: 'cash' }]);
+      expect(stored['splits']).toEqual([{ memberId: OWNER, input: 50001, owedPaise: 50001 }]);
+      const [entry] = await readHistory(id);
+      expect(entry?.['before']).toMatchObject({ amountPaise: 45000, parts });
+      await waitForBalance(OWNER, -50001);
+    });
+
+    it('removes the breakdown when sent null, keeping the amount given', async () => {
+      const id = await seedBatchPayment();
+      const call = await callFunction('updateExpense', payer, {
+        groupId, expenseId: id, changes: { parts: null, amountPaise: 45000 },
+      });
+      expect(call.ok, call.message).toBe(true);
+      const stored = await readExpense(id);
+      expect(stored['parts']).toBeNull();
+      expect(stored['amountPaise']).toBe(45000);
+    });
+
+    it('drops a stale breakdown when an older app edits only the amount', async () => {
+      const id = await seedBatchPayment();
+      const call = await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { amountPaise: 46000 } });
+      expect(call.ok, call.message).toBe(true);
+      const stored = await readExpense(id);
+      expect(stored['amountPaise']).toBe(46000);
+      expect(stored['parts']).toBeNull();
+      const [entry] = await readHistory(id);
+      expect(entry?.['before']).toMatchObject({ parts });
+    });
+
+    it('keeps the breakdown when something else is edited', async () => {
+      const id = await seedBatchPayment();
+      const call = await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { description: 'UPI batch' } });
+      expect(call.ok, call.message).toBe(true);
+      expect((await readExpense(id))['parts']).toEqual(parts);
+    });
+
+    it('refuses transfers that do not match the amount sent with them', async () => {
+      const id = await seedBatchPayment();
+      const call = await callFunction('updateExpense', payer, {
+        groupId, expenseId: id, changes: { parts, amountPaise: 45001 },
+      });
+      expect(call.ok).toBe(false);
+      expect(call.status).toBe('INVALID_ARGUMENT');
+    });
+
+    it('refuses malformed transfers', async () => {
+      const id = await seedBatchPayment();
+      const call = await callFunction('updateExpense', payer, {
+        groupId, expenseId: id, changes: { parts: [{ amountPaise: 100 }, { amountPaise: -1 }] },
+      });
+      expect(call.ok).toBe(false);
+      expect(call.status).toBe('INVALID_ARGUMENT');
+    });
+
+    it('refuses a breakdown on an ordinary expense', async () => {
+      const id = await seedLegacyExpense();
+      const call = await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { parts } });
+      expect(call.ok).toBe(false);
+      expect(call.status).toBe('INVALID_ARGUMENT');
+    });
+  });
 });

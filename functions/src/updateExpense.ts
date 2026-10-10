@@ -1,13 +1,16 @@
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
-import type { Expense, Group, Member, SplitEntry, SplitInput, SplitType } from '@app/shared';
+import type { Expense, Group, Member, SettlementPart, SplitEntry, SplitInput, SplitType } from '@app/shared';
 import {
   assertSplitsValid,
   computeSplits,
   isValidLocation,
   isValidTime,
   MAX_NOTE_LENGTH,
+  normalizeParts,
+  PartsError,
+  partsTotal,
   settlementSplits,
   SplitError,
 } from '@app/shared';
@@ -25,12 +28,17 @@ interface Changes {
   paidBy?: string;
   splitType?: SplitType;
   splitInputs?: SplitInput[];
+  /**
+   * Settlements only. A list replaces the breakdown and the amount becomes
+   * its sum; null removes it. Omitted = leave it, unless the amount changes.
+   */
+  parts?: unknown;
 }
 
 /** Fields worth snapshotting into history when they change. */
 const TRACKED = [
   'description', 'note', 'date', 'time', 'location',
-  'amountPaise', 'paidBy', 'splitType', 'splits',
+  'amountPaise', 'paidBy', 'splitType', 'splits', 'parts',
 ] as const;
 
 function validate(changes: Changes): void {
@@ -120,7 +128,36 @@ export const updateExpense = onCall(async (request) => {
       );
     }
 
-    const amountPaise = changes.amountPaise ?? before.amountPaise;
+    // Settlement breakdown. Rules only check its shape on create, so this is
+    // where it is held to the full standard: valid transfers, summing exactly.
+    let parts: SettlementPart[] | null = before.parts ?? null;
+    let amountFromParts: number | undefined;
+    if (changes.parts !== undefined) {
+      if (before.type !== 'settlement') {
+        throw new HttpsError('invalid-argument', 'Only a payment can be split into transfers.');
+      }
+      try {
+        parts = normalizeParts(changes.parts);
+      } catch (error) {
+        throw new HttpsError('invalid-argument', error instanceof PartsError ? error.message : 'Those transfers are not valid.');
+      }
+      if (parts) {
+        amountFromParts = partsTotal(parts);
+        if (changes.amountPaise !== undefined && changes.amountPaise !== amountFromParts) {
+          throw new HttpsError('invalid-argument', 'The transfers do not add up to the amount.');
+        }
+      }
+    } else if (
+      parts &&
+      changes.amountPaise !== undefined &&
+      changes.amountPaise !== before.amountPaise
+    ) {
+      // An app version from before breakdowns existed edited only the amount.
+      // The old transfers no longer describe it, so drop them; history keeps them.
+      parts = null;
+    }
+
+    const amountPaise = amountFromParts ?? changes.amountPaise ?? before.amountPaise;
     const paidBy = changes.paidBy ?? before.paidBy;
     const splitType = changes.splitType ?? before.splitType;
 
@@ -128,6 +165,7 @@ export const updateExpense = onCall(async (request) => {
     const splitsAffected =
       changes.splitInputs !== undefined ||
       changes.amountPaise !== undefined ||
+      amountFromParts !== undefined ||
       changes.splitType !== undefined;
 
     if (splitsAffected) {
@@ -162,6 +200,7 @@ export const updateExpense = onCall(async (request) => {
       paidBy,
       splitType,
       splits,
+      parts,
     };
 
     const changedFields = TRACKED.filter(

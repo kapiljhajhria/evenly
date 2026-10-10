@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from 'react-router';
 import type { Timestamp } from 'firebase/firestore';
 import type { Member, WithId } from '@app/shared';
-import { formatPaise, formatTime } from '@app/shared';
+import { formatPaise, formatTime, usableParts } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { useExpense, useExpenseHistory } from '../../hooks/useExpenses.js';
@@ -76,6 +76,7 @@ export function EditExpensePage() {
           paidBy: expense.paidBy,
           splitType: expense.splitType,
           splitValue: Object.fromEntries(expense.splits.map((s) => [s.memberId, s.input])),
+          parts: usableParts(expense),
         }}
         onSubmit={async (values) => {
           await updateExpense({
@@ -88,9 +89,10 @@ export function EditExpensePage() {
               time: values.time || null,
               location: values.location,
               amountPaise: values.amountPaise,
-              // A settlement's payer and split are fixed; only the amount moves.
+              // A settlement's payer and split are fixed; only the amount, and
+              // the transfers it is made of, move.
               ...(isSettlement
-                ? {}
+                ? { parts: values.parts }
                 : {
                     paidBy: values.paidBy,
                     splitType: values.splitType,
@@ -118,9 +120,15 @@ const FIELD_LABELS: Record<string, string> = {
   paidBy: 'Paid by',
   splitType: 'Split type',
   splits: 'Split',
+  parts: 'Transfers',
 };
 
 function describeValue(field: string, value: unknown, membersById: Record<string, WithId<Member<Timestamp>>>): string {
+  // Before any other check: a null breakdown reads "one amount", not "empty".
+  if (field === 'parts') {
+    const count = Array.isArray(value) ? value.length : 0;
+    return count > 0 ? `${count} transfers` : 'one amount';
+  }
   if (value === null || value === undefined || value === '') return 'empty';
   if (field === 'amountPaise') return formatPaise(value as number);
   if (field === 'paidBy') return membersById[value as string]?.name ?? 'someone';

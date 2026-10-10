@@ -403,6 +403,66 @@ describe('expenses: fields added after launch', () => {
   });
 });
 
+describe('expenses: settlement transfers', () => {
+  const settlement = (parts: unknown, overrides: Record<string, unknown> = {}) =>
+    expenseData({
+      type: 'settlement',
+      description: 'Settled up',
+      createdBy: BOB,
+      paidBy: SLOT_BOB,
+      splitType: 'amount',
+      amountPaise: 75000,
+      splits: [{ memberId: SLOT_ALICE, input: 75000, owedPaise: 75000 }],
+      parts,
+      ...overrides,
+    });
+  const create = (data: Record<string, unknown>) =>
+    setDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'batch'), data);
+
+  it('accepts a payment made of several transfers that sum to the amount', async () => {
+    await assertSucceeds(
+      create(settlement([{ amountPaise: 50000, note: 'UPI 4821' }, { amountPaise: 25000, note: null }])),
+    );
+  });
+
+  it('accepts the cap of 20 transfers', async () => {
+    const parts = Array.from({ length: 20 }, (_, i) => ({ amountPaise: i === 0 ? 75000 - 19 * 100 : 100 }));
+    await assertSucceeds(create(settlement(parts)));
+  });
+
+  it('still accepts a payment with no breakdown, absent or null', async () => {
+    await assertSucceeds(create(settlement(null)));
+  });
+
+  it.each([
+    ['a single transfer', [{ amountPaise: 75000 }]],
+    ['21 transfers', Array.from({ length: 21 }, (_, i) => ({ amountPaise: i === 0 ? 75000 - 20 * 100 : 100 }))],
+    ['a non-list', { amountPaise: 75000 }],
+  ])('rejects %s', async (_label, parts) => {
+    await assertFails(create(settlement(parts)));
+  });
+
+  it('checks shape only, not the sum — the app hides a breakdown that does not add up', async () => {
+    // Pinned on purpose: per-transfer checks exceed the rules' 1000-expression
+    // budget past ~7 transfers. Balances never read parts; usableParts() does
+    // the full check at display time and updateExpense on every edit.
+    await assertSucceeds(create(settlement([{ amountPaise: 50000 }, { amountPaise: 1 }])));
+  });
+
+  it('rejects a breakdown on an ordinary expense', async () => {
+    await assertFails(
+      setDoc(
+        doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'not-a-payment'),
+        expenseData({
+          createdBy: BOB,
+          paidBy: SLOT_BOB,
+          parts: [{ amountPaise: 15000 }, { amountPaise: 15000 }],
+        }),
+      ),
+    );
+  });
+});
+
 describe('expenses: ownership', () => {
   beforeEach(async () => {
     // Paid by Bob, recorded by Alice.

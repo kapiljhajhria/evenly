@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { formatTime, isValidLocation, isValidTime, localDateString, localTimeString, mapsUrl } from './expense.js';
+import {
+  formatTime,
+  isValidLocation,
+  isValidTime,
+  localDateString,
+  localTimeString,
+  mapsUrl,
+  MAX_PART_NOTE_LENGTH,
+  MAX_PARTS,
+  normalizeParts,
+  PartsError,
+  partsTotal,
+  usableParts,
+} from './expense.js';
 
 describe('isValidTime', () => {
   it.each(['00:00', '09:05', '19:30', '23:59'])('accepts %s', (time) => {
@@ -67,5 +80,66 @@ describe('local date and time', () => {
     expect(localDateString(at)).toBe('2026-01-05');
     expect(localTimeString(at)).toBe('09:07');
     expect(isValidTime(localTimeString(at))).toBe(true);
+  });
+});
+
+describe('normalizeParts', () => {
+  it('treats absent, null and a single transfer as no breakdown', () => {
+    expect(normalizeParts(undefined)).toBeNull();
+    expect(normalizeParts(null)).toBeNull();
+    expect(normalizeParts([{ amountPaise: 500 }])).toBeNull();
+  });
+
+  it('keeps two or more transfers, trimming notes and nulling blanks', () => {
+    expect(normalizeParts([{ amountPaise: 500, note: '  UPI 4821 ' }, { amountPaise: 250, note: '   ' }])).toEqual([
+      { amountPaise: 500, note: 'UPI 4821' },
+      { amountPaise: 250, note: null },
+    ]);
+  });
+
+  it.each([
+    ['a zero amount', [{ amountPaise: 0 }, { amountPaise: 1 }]],
+    ['a negative amount', [{ amountPaise: -5 }, { amountPaise: 1 }]],
+    ['a fractional amount', [{ amountPaise: 1.5 }, { amountPaise: 1 }]],
+    ['a missing amount', [{ note: 'x' }, { amountPaise: 1 }]],
+    ['a long note', [{ amountPaise: 1, note: 'x'.repeat(MAX_PART_NOTE_LENGTH + 1) }, { amountPaise: 1 }]],
+    ['too many transfers', Array.from({ length: MAX_PARTS + 1 }, () => ({ amountPaise: 1 }))],
+    ['a non-list', { amountPaise: 1 }],
+  ])('rejects %s', (_label, value) => {
+    expect(() => normalizeParts(value)).toThrow(PartsError);
+  });
+
+  it('accepts exactly the cap', () => {
+    expect(normalizeParts(Array.from({ length: MAX_PARTS }, () => ({ amountPaise: 1 })))).toHaveLength(MAX_PARTS);
+  });
+});
+
+describe('partsTotal', () => {
+  it('adds integer paise exactly', () => {
+    expect(partsTotal([{ amountPaise: 33334 }, { amountPaise: 33333 }, { amountPaise: 33333 }])).toBe(100000);
+  });
+});
+
+describe('usableParts', () => {
+  const parts = [{ amountPaise: 500, note: 'UPI 1' }, { amountPaise: 250, note: null }];
+
+  it('shows a well-formed breakdown that sums to the amount', () => {
+    expect(usableParts({ type: 'settlement', amountPaise: 750, parts })).toEqual(parts);
+  });
+
+  it('hides a breakdown that does not sum to the amount', () => {
+    expect(usableParts({ type: 'settlement', amountPaise: 751, parts })).toBeNull();
+  });
+
+  it('hides a breakdown on an ordinary expense', () => {
+    expect(usableParts({ type: 'expense', amountPaise: 750, parts })).toBeNull();
+  });
+
+  it('hides a malformed breakdown instead of throwing', () => {
+    expect(usableParts({ type: 'settlement', amountPaise: 750, parts: [{ amountPaise: 'x' }, {}] })).toBeNull();
+  });
+
+  it('is null for payments recorded before breakdowns existed', () => {
+    expect(usableParts({ type: 'settlement', amountPaise: 750 })).toBeNull();
   });
 });

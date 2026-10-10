@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { Expense, Member, WithId } from '@app/shared';
-import { formatPaise, formatTime } from '@app/shared';
+import { formatPaise, formatTime, usableParts } from '@app/shared';
 import { Link } from 'react-router';
 import { Avatar, Button, EmptyState, Money } from '../../components/ui.js';
 import { deleteExpense, expensePermissions } from './api.js';
@@ -64,11 +64,13 @@ export function ExpenseList({
           });
           const isSettlement = expense.type === 'settlement';
           const receipt = viewOf(expense);
+          const parts = usableParts(expense);
           const receiver = isSettlement ? nameOf(expense.splits[0]?.memberId ?? '') : null;
           const hasDetail =
             Boolean(expense.note) ||
             Boolean(expense.location) ||
             Boolean(expense.receiptPath) ||
+            parts !== null ||
             canEdit ||
             canDelete ||
             !isSettlement;
@@ -87,6 +89,7 @@ export function ExpenseList({
                     <p className="flex flex-wrap items-center gap-x-1 text-xs text-slate-500">
                       <span>{formatWhen(expense)}</span>
                       {!isSettlement && <span>· {payer?.name ?? 'Someone'} paid</span>}
+                      {parts && <span>· {parts.length} transfers</span>}
                       {expense.note && <span aria-label="has a note">· 📝</span>}
                       {expense.location && <span aria-label="has a location">· 📍</span>}
                       {receipt === 'uploaded' && <span aria-label="has a receipt">· 🧾</span>}
@@ -135,6 +138,20 @@ export function ExpenseList({
                       The receipt photo did not upload.{' '}
                       <ReceiptRetryButton groupId={groupId} expenseId={expense.id} />
                     </p>
+                  )}
+
+                  {parts && (
+                    <ol className="space-y-1 text-sm">
+                      {parts.map((part, index) => (
+                        <li key={index} className="flex justify-between gap-3">
+                          <span className="min-w-0 truncate text-slate-500">
+                            <span className="tabular mr-2 text-slate-400">{index + 1}.</span>
+                            {part.note ?? 'Transfer'}
+                          </span>
+                          <span className="tabular text-slate-600">{formatPaise(part.amountPaise)}</span>
+                        </li>
+                      ))}
+                    </ol>
                   )}
 
                   {!isSettlement && (

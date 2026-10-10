@@ -1,5 +1,5 @@
 import type { BalanceMap, Expense } from '@app/shared';
-import { formatPaise, formatTime, netFor, suggestSettlements } from '@app/shared';
+import { formatPaise, formatTime, netFor, suggestSettlements, usableParts } from '@app/shared';
 
 /**
  * Everything the PDF says, worked out without jsPDF or the DOM so it can be
@@ -8,7 +8,7 @@ import { formatPaise, formatTime, netFor, suggestSettlements } from '@app/shared
 
 export type ExportExpense = Pick<
   Expense<unknown>,
-  'type' | 'description' | 'note' | 'date' | 'time' | 'amountPaise' | 'paidBy' | 'splits' | 'receiptPath'
+  'type' | 'description' | 'note' | 'date' | 'time' | 'amountPaise' | 'paidBy' | 'splits' | 'receiptPath' | 'parts'
 > & { id: string };
 
 export interface ExportInput {
@@ -37,7 +37,10 @@ export interface ExportModel {
   balanceRows: [string, string][];
   /** [from, to, amount]. Empty once everyone is settled. */
   transferRows: [string, string, string][];
-  /** [date, description, paid by, amount, split]. Oldest first. */
+  /**
+   * [date, description, paid by, amount, split]. Oldest first. For a payment
+   * made in several transfers, the split column lists the transfers.
+   */
   ledgerRows: [string, string, string, string, string][];
   /** Same order as the ledger. Appended at the end, one per page. */
   receipts: ExportReceipt[];
@@ -76,6 +79,13 @@ function chronological(expenses: ExportExpense[]): ExportExpense[] {
     .map(({ expense }) => expense);
 }
 
+function transferLines(expense: ExportExpense): string {
+  const parts = usableParts(expense);
+  if (!parts) return '—';
+  const lines = parts.map((part, i) => `${i + 1}. ${pdfMoney(part.amountPaise)}${part.note ? ` ${part.note}` : ''}`);
+  return [`${parts.length} transfers:`, ...lines].join('\n');
+}
+
 export function buildExport(input: ExportInput): ExportModel {
   const names = new Map(input.members.map((m) => [m.id, m.name]));
   const nameOf = (memberId: string): string => names.get(memberId) ?? 'Removed member';
@@ -104,7 +114,7 @@ export function buildExport(input: ExportInput): ExportModel {
       payer,
       pdfMoney(expense.amountPaise),
       isSettlement
-        ? '—'
+        ? transferLines(expense)
         : expense.splits.map((s) => `${nameOf(s.memberId)} ${pdfMoney(s.owedPaise)}`).join('\n'),
     ]);
 

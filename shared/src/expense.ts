@@ -2,10 +2,67 @@
  * Helpers for the optional, later-added expense fields. Shared so the client
  * and the rules tests agree on what "valid" means.
  */
-import type { ExpenseLocation } from './types.js';
+import type { ExpenseLocation, SettlementPart } from './types.js';
 
 export const MAX_NOTE_LENGTH = 500;
 export const MAX_DESCRIPTION_LENGTH = 140;
+
+/** Matches the unrolled sum in firestore.rules — raise both together. */
+export const MAX_PARTS = 20;
+export const MAX_PART_NOTE_LENGTH = 60;
+
+export class PartsError extends Error {
+  override name = 'PartsError';
+}
+
+/**
+ * Validate and normalize a settlement's transfer breakdown. Returns null for
+ * "no breakdown" (absent, null, or a single transfer — that is just the
+ * amount). Throws PartsError for anything malformed.
+ */
+export function normalizeParts(value: unknown): SettlementPart[] | null {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value)) throw new PartsError('The transfers are not a list.');
+  if (value.length > MAX_PARTS) throw new PartsError(`At most ${MAX_PARTS} transfers in one payment.`);
+
+  const parts = value.map((raw, index): SettlementPart => {
+    const part = (raw ?? {}) as Partial<SettlementPart>;
+    const amountPaise = part.amountPaise;
+    if (typeof amountPaise !== 'number' || !Number.isSafeInteger(amountPaise) || amountPaise <= 0) {
+      throw new PartsError(`Transfer ${index + 1} needs an amount above zero.`);
+    }
+    const note = typeof part.note === 'string' ? part.note.trim() : null;
+    if (note !== null && note.length > MAX_PART_NOTE_LENGTH) {
+      throw new PartsError(`The note on transfer ${index + 1} is too long.`);
+    }
+    return { amountPaise, note: note || null };
+  });
+  return parts.length >= 2 ? parts : null;
+}
+
+export function partsTotal(parts: readonly SettlementPart[]): number {
+  return parts.reduce((sum, part) => sum + part.amountPaise, 0);
+}
+
+/**
+ * The breakdown to SHOW for a stored expense, or null. Rules only check the
+ * shape of `parts` (see firestore.rules for why), so anything that is not a
+ * settlement, is malformed, or does not sum exactly to the amount is treated
+ * as no breakdown rather than displayed wrong.
+ */
+export function usableParts(expense: {
+  type: string;
+  amountPaise: number;
+  parts?: unknown;
+}): SettlementPart[] | null {
+  if (expense.type !== 'settlement') return null;
+  try {
+    const parts = normalizeParts(expense.parts);
+    return parts && partsTotal(parts) === expense.amountPaise ? parts : null;
+  } catch {
+    return null;
+  }
+}
 
 /** `HH:mm`, 24-hour. */
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;

@@ -5,7 +5,6 @@ import {
   localDateString,
   localTimeString,
   netFor,
-  parseRupeesToPaise,
   paiseToDecimalString,
   suggestSettlements,
 } from '@app/shared';
@@ -15,6 +14,8 @@ import { addSettlement } from './api.js';
 import { AppShell } from '../../components/Layout.js';
 import { Button, Card, EmptyState, ErrorNote, Field, FullPageSpinner, Input } from '../../components/ui.js';
 import { paymentWarning } from './payment.js';
+import { PaymentAmountField } from './PaymentAmountField.js';
+import { emptyRow, parseRows, type PartRow } from './parts.js';
 
 const SELECT_CLASS =
   'min-h-11 w-full rounded-xl border-0 bg-white px-3 text-base ring-1 ring-slate-200 focus:ring-2 focus:ring-brand-500';
@@ -39,7 +40,7 @@ export function SettleUpPage() {
 
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [amountRaw, setAmountRaw] = useState('');
+  const [rows, setRows] = useState<PartRow[]>([emptyRow()]);
   const [note, setNote] = useState('');
 
   const myMemberId = members.find((m) => m.uid === user?.uid)?.id ?? null;
@@ -58,13 +59,21 @@ export function SettleUpPage() {
     if (memberId === myMemberId) return 'You';
     return members.find((m) => m.id === memberId)?.name ?? 'Someone';
   };
-  const amountPaise = parseRupeesToPaise(amountRaw) ?? 0;
+  const { amountPaise, parts, error: partsError } = parseRows(rows);
   const warning = from && to && from !== to && amountPaise > 0
     ? paymentWarning(balances, from, to, amountPaise, nameOf)
     : null;
-  const canRecord = from !== '' && to !== '' && from !== to && amountPaise > 0 && busy === null;
+  const canRecord =
+    from !== '' && to !== '' && from !== to && amountPaise > 0 && partsError === null && busy === null;
 
-  const record = async (key: string, payer: string, receiver: string, paise: number, text?: string) => {
+  const record = async (
+    key: string,
+    payer: string,
+    receiver: string,
+    paise: number,
+    text?: string,
+    breakdown?: typeof parts,
+  ) => {
     setBusy(key);
     setError(null);
     try {
@@ -73,6 +82,7 @@ export function SettleUpPage() {
         fromMemberId: payer,
         toMemberId: receiver,
         amountPaise: paise,
+        parts: breakdown ?? null,
         // Local, not UTC: toISOString() would record yesterday between
         // midnight and 05:30 IST.
         date: localDateString(),
@@ -89,14 +99,14 @@ export function SettleUpPage() {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (canRecord) void record('custom', from, to, amountPaise, note);
+    if (canRecord) void record('custom', from, to, amountPaise, note, parts);
   };
 
   /** Pre-fill the form from a suggestion, to record part of it. */
   const prefill = (payer: string, receiver: string, paise: number) => {
     setFrom(payer);
     setTo(receiver);
-    setAmountRaw(paiseToDecimalString(paise));
+    setRows([{ amountRaw: paiseToDecimalString(paise), note: '' }]);
     document.getElementById('record-payment')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -200,15 +210,7 @@ export function SettleUpPage() {
                   </select>
                 </Field>
               </div>
-              <Field label="Amount (₹)">
-                <Input
-                  inputMode="decimal"
-                  value={amountRaw}
-                  onChange={(e) => setAmountRaw(e.target.value)}
-                  placeholder="0.00"
-                  required
-                />
-              </Field>
+              <PaymentAmountField rows={rows} onChange={setRows} />
               <Field label="Note" hint="Optional. Shown instead of “Settled up”.">
                 <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={140} placeholder="UPI, cash…" />
               </Field>

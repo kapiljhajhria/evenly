@@ -41,9 +41,9 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (138 tests, no emulator)
-npm run test:rules       # Firestore + Storage rules vs the emulators (111 tests)
-npm run test:integration # functions + real client modules (53 tests)
+npm test                 # pure logic in shared/ and web/ (163 tests, no emulator)
+npm run test:rules       # Firestore + Storage rules vs the emulators (119 tests)
+npm run test:integration # functions + real client modules (60 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
 ```
@@ -97,6 +97,12 @@ workspace-only version spec is unresolvable from the public registry.
   The callable writes both in one transaction and recomputes splits server-side.
   Direct client writes are locked to the receipt fields, which the background
   upload needs.
+- **A payment can carry a transfer breakdown, display-only.** `parts` on a
+  settlement lists the individual transfers (11 UPI payments recorded as one).
+  Balances never read it — only `amountPaise` and `splits`. Rules check its
+  shape only, because per-transfer checks exceed the rules' 1000-expression
+  budget at ~7 transfers; `usableParts()` hides any breakdown that does not
+  sum exactly to the amount, and `updateExpense` validates it fully on edit.
 - **Fields added after launch are optional, always.** `note`, `time` and
   `location` on an expense are validated as "absent OR null OR valid". An
   update sends the whole document, so requiring any of them would have locked

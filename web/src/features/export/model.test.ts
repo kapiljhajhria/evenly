@@ -91,6 +91,24 @@ describe('buildExport', () => {
     expect(model.totals).toEqual({ spentPaise: 30001, expenseCount: 1, settlementCount: 1 });
   });
 
+  it('lists the transfers of a payment made in several goes', () => {
+    const [row] = buildExport(
+      input({
+        expenses: [
+          expense({
+            type: 'settlement',
+            description: 'Settled up',
+            paidBy: 'm-b',
+            amountPaise: 15000,
+            splits: [{ memberId: 'm-a', input: 15000, owedPaise: 15000 }],
+            parts: [{ amountPaise: 10000, note: 'UPI 4821' }, { amountPaise: 5000, note: null }],
+          }),
+        ],
+      }),
+    ).ledgerRows;
+    expect(row![4]).toBe('2 transfers:\n1. Rs 100.00 UPI 4821\n2. Rs 50.00');
+  });
+
   it('collects receipts in ledger order with a caption each', () => {
     const model = buildExport(
       input({

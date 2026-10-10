@@ -1,8 +1,8 @@
 import { addDoc, deleteDoc, serverTimestamp, type Timestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase.js';
-import type { Expense, ExpenseLocation, ExpenseType, SplitType } from '@app/shared';
-import { assertSplitsValid, computeSplits, settlementSplits } from '@app/shared';
+import type { Expense, ExpenseLocation, ExpenseType, SettlementPart, SplitType } from '@app/shared';
+import { assertSplitsValid, computeSplits, normalizeParts, partsTotal, settlementSplits } from '@app/shared';
 import { expenseDoc, expensesCol } from '../../lib/paths.js';
 
 export interface NewExpenseInput {
@@ -47,18 +47,27 @@ export async function addExpense(input: NewExpenseInput): Promise<string> {
   return ref.id;
 }
 
-/** A settlement is just an expense with one split line pointing at the receiver. */
+/**
+ * A settlement is just an expense with one split line pointing at the receiver.
+ * `parts` records a payment made in several transfers; the amount must be
+ * their sum, and the balances only ever see the amount.
+ */
 export async function addSettlement(args: {
   groupId: string;
   fromMemberId: string;
   toMemberId: string;
   amountPaise: number;
+  parts?: SettlementPart[] | null;
   date: string;
   time?: string | null;
   createdBy: string;
   note?: string;
 }): Promise<string> {
   const splits = settlementSplits(args.toMemberId, args.amountPaise);
+  const parts = normalizeParts(args.parts);
+  if (parts && partsTotal(parts) !== args.amountPaise) {
+    throw new Error('The transfers do not add up to the amount.');
+  }
   const ref = await addDoc(expensesCol(args.groupId), {
     type: 'settlement',
     description: args.note?.trim() || 'Settled up',
@@ -71,6 +80,8 @@ export async function addSettlement(args: {
     createdBy: args.createdBy,
     splitType: 'amount',
     splits,
+    // Only written when there is one, so plain payments keep their old shape.
+    ...(parts ? { parts } : {}),
     receiptStatus: 'none',
     receiptPath: null,
     createdAt: serverTimestamp(),
@@ -89,6 +100,8 @@ export interface UpdateExpenseChanges {
   paidBy?: string;
   splitType?: SplitType;
   splitInputs?: { memberId: string; input: number }[];
+  /** Settlements only. null removes the breakdown. */
+  parts?: SettlementPart[] | null;
 }
 
 /**
