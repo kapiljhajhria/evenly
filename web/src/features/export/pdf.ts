@@ -111,11 +111,12 @@ async function buildGroupPdf(
   // The whole history, not the list's paginated window. Same ordering as the
   // list so it reuses that composite index, then reversed: the model breaks
   // date/time ties by input order, and those must read oldest first.
-  const [snap, { jsPDF }, { default: autoTable }] = await Promise.all([
+  const [snap, { jsPDF }, { default: autoTable }, fonts] = await Promise.all([
     getDocs(query(expensesCol(args.groupId), orderBy('date', 'desc'), orderBy('createdAt', 'desc'))),
     // Loaded on demand: jsPDF is larger than the rest of the app put together.
     import('jspdf'),
     import('jspdf-autotable'),
+    loadFonts(),
   ]);
   const expenses = snap.docs
     .map((doc) => {
@@ -133,14 +134,16 @@ async function buildGroupPdf(
     expenses,
     generatedAt,
     dateFormat: usePreferences.getState().displayDateFormat,
+    rupeeSign: fonts !== null,
   });
 
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const font = fonts ? registerFonts(doc, fonts) : 'helvetica';
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const lastY = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
 
-  writeSummary(doc, autoTable, model, lastY);
+  writeSummary(doc, autoTable, model, lastY, font, fonts !== null);
 
   let missingReceipts = 0;
   let pdfLib: PdfLib | null = null;
@@ -289,13 +292,21 @@ async function loadReceiptPdf(pdfLib: PdfLib, path: string): Promise<LoadedPdf> 
 type Doc = InstanceType<typeof import('jspdf').jsPDF>;
 type AutoTable = typeof import('jspdf-autotable').default;
 
-const TABLE_STYLE = {
+const BASE_TABLE_STYLE = {
   styles: { fontSize: 9, cellPadding: 4, textColor: [15, 23, 42] as [number, number, number] },
   headStyles: { fillColor: [15, 23, 42] as [number, number, number], textColor: 255 },
   margin: { left: MARGIN, right: MARGIN },
 };
 
-function writeSummary(doc: Doc, autoTable: AutoTable, model: ExportModel, lastY: () => number): void {
+function writeSummary(
+  doc: Doc,
+  autoTable: AutoTable,
+  model: ExportModel,
+  lastY: () => number,
+  font: string,
+  rupeeSign: boolean,
+): void {
+  const TABLE_STYLE = { ...BASE_TABLE_STYLE, styles: { ...BASE_TABLE_STYLE.styles, font } };
   doc.setFontSize(20);
   doc.setTextColor(15, 23, 42);
   doc.text(model.title, MARGIN, MARGIN + 10);
@@ -306,7 +317,7 @@ function writeSummary(doc: Doc, autoTable: AutoTable, model: ExportModel, lastY:
   const { spentPaise, expenseCount, settlementCount } = model.totals;
   doc.setTextColor(15, 23, 42);
   doc.text(
-    `Total spent ${pdfMoney(spentPaise)} across ${expenseCount} expense${expenseCount === 1 ? '' : 's'}` +
+    `Total spent ${pdfMoney(spentPaise, rupeeSign)} across ${expenseCount} expense${expenseCount === 1 ? '' : 's'}` +
       (settlementCount > 0 ? ` · ${settlementCount} settlement${settlementCount === 1 ? '' : 's'}` : '') +
       (model.receipts.length > 0 ? ` · ${model.receipts.length} receipt${model.receipts.length === 1 ? '' : 's'} at the end` : ''),
     MARGIN,
@@ -446,4 +457,61 @@ async function loadReceiptAsJpeg(path: string): Promise<{ dataUrl: string; width
     // A tainted canvas: the image loaded without usable CORS headers.
     throw new ReceiptLoadError('blocked', error);
   }
+}
+
+// ------------------------------------------------------------------ fonts
+
+/**
+ * Noto Sans, subset to Latin (incl. accents), Greek, Cyrillic, punctuation and
+ * currency symbols — ~110KB each, fetched only when exporting and not
+ * precached (.ttf is outside the service worker's patterns). It brings the ₹
+ * sign and accented names (José, Zoë) that the built-in Helvetica cannot
+ * print. It does NOT make Hindi or other scripts that need shaping render
+ * correctly — jsPDF places glyphs one by one. Licence: fonts/OFL.txt.
+ */
+const FONT_FILES = {
+  normal: new URL('./fonts/NotoSans-Regular.ttf', import.meta.url).href,
+  bold: new URL('./fonts/NotoSans-Bold.ttf', import.meta.url).href,
+};
+const FONT_NAME = 'NotoSans';
+
+type LoadedFonts = { normal: string; bold: string };
+let fontCache: Promise<LoadedFonts | null> | null = null;
+
+function toBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  // In slices: String.fromCharCode(...bytes) on 110KB overflows the stack.
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+/** Null when the font cannot be fetched (e.g. offline): the PDF falls back to Helvetica and "Rs". */
+function loadFonts(): Promise<LoadedFonts | null> {
+  fontCache ??= (async () => {
+    try {
+      const [normal, bold] = await Promise.all(
+        [FONT_FILES.normal, FONT_FILES.bold].map(async (url) => {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return toBase64(await response.arrayBuffer());
+        }),
+      );
+      return { normal: normal!, bold: bold! };
+    } catch (error) {
+      console.warn('[export] font not loaded, falling back to Helvetica', error);
+      fontCache = null; // try again next export
+      return null;
+    }
+  })();
+  return fontCache;
+}
+
+function registerFonts(doc: Doc, fonts: LoadedFonts): string {
+  doc.addFileToVFS('NotoSans-Regular.ttf', fonts.normal);
+  doc.addFont('NotoSans-Regular.ttf', FONT_NAME, 'normal');
+  doc.addFileToVFS('NotoSans-Bold.ttf', fonts.bold);
+  doc.addFont('NotoSans-Bold.ttf', FONT_NAME, 'bold');
+  doc.setFont(FONT_NAME, 'normal');
+  return FONT_NAME;
 }

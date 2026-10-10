@@ -41,7 +41,7 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (226 tests, no emulator)
+npm test                 # pure logic in shared/ and web/ (228 tests, no emulator)
 npm run test:rules       # Firestore + Storage rules vs the emulators (166 tests)
 npm run test:integration # functions + real client modules (95 tests)
 npm run test:all         # all of the above
@@ -208,7 +208,11 @@ prompt (one tap on Android/desktop, Share-sheet steps on iPhone) on the home
 page and in Settings, and an honest offline mode. "Download all files (.zip)"
 next to the PDF: the same report plus every receipt as its original file
 (`receipts/<date> <description> Rs <amount>.<ext>`), built on the device
-with fflate.
+with fflate. The PDF embeds Noto Sans (subset: Latin incl. accents, Greek,
+Cyrillic, ₹ — `web/src/features/export/fonts`, OFL) so amounts read ₹ and
+accented names print; it falls back to Helvetica and "Rs" if the font cannot
+load. Scripts that need shaping (Devanagari) and emoji are still not
+supported — jsPDF cannot shape text.
 
 Next, per the brief §9: close flow + `autoClose` UI, PWA polish, then FCM
 push in v1.5.

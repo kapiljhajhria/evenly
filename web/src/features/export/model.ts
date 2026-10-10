@@ -30,6 +30,8 @@ export interface ExportInput {
   generatedAt: Date;
   /** The exporting person's display setting; the list's default otherwise. */
   dateFormat?: DateFormat;
+  /** True when the PDF has a font with the ₹ glyph (see pdfMoney). */
+  rupeeSign?: boolean;
 }
 
 export interface ExportReceipt {
@@ -59,10 +61,13 @@ export interface ExportModel {
 }
 
 /**
- * The PDF's built-in Helvetica has no ₹ glyph — it would print as a stray
- * character — so amounts read "Rs 1,234.50" in the export only.
+ * Amounts in the PDF. With the embedded Noto Sans font (the normal case) they
+ * read "₹1,234.50" like the app. Without it — the font could not be loaded —
+ * jsPDF falls back to Helvetica, which has no ₹ glyph, so they read
+ * "Rs 1,234.50" instead of printing a stray character.
  */
-export const pdfMoney = (paise: number): string => `Rs ${formatPaise(paise, { symbol: false })}`;
+export const pdfMoney = (paise: number, rupeeSign = false): string =>
+  rupeeSign ? formatPaise(paise) : `Rs ${formatPaise(paise, { symbol: false })}`;
 
 /** Same format as the exporter sees in the app, so PDF and screen agree. */
 export const pdfDate = (date: string, format: DateFormat = DEFAULT_DISPLAY_DATE_FORMAT): string =>
@@ -81,15 +86,16 @@ function chronological(expenses: ExportExpense[]): ExportExpense[] {
     .map(({ expense }) => expense);
 }
 
-function transferLines(expense: ExportExpense): string {
+function transferLines(expense: ExportExpense, money: (paise: number) => string): string {
   const parts = usableParts(expense);
   if (!parts) return '—';
-  const lines = parts.map((part, i) => `${i + 1}. ${pdfMoney(part.amountPaise)}${part.note ? ` ${part.note}` : ''}`);
+  const lines = parts.map((part, i) => `${i + 1}. ${money(part.amountPaise)}${part.note ? ` ${part.note}` : ''}`);
   return [`${parts.length} transfers:`, ...lines].join('\n');
 }
 
 export function buildExport(input: ExportInput): ExportModel {
   const dateFormat = input.dateFormat ?? DEFAULT_DISPLAY_DATE_FORMAT;
+  const money = (paise: number) => pdfMoney(paise, input.rupeeSign ?? false);
   const names = new Map(input.members.map((m) => [m.id, m.name]));
   const nameOf = (memberId: string): string => names.get(memberId) ?? 'Removed member';
   const nameOfUid = (uid: string | null | undefined): string =>
@@ -104,7 +110,7 @@ export function buildExport(input: ExportInput): ExportModel {
     expense.type === 'settlement'
       ? `${nameOf(expense.paidBy)} paid ${nameOf(expense.splits[0]?.memberId ?? '')} (settlement)`
       : expense.description,
-    pdfMoney(expense.amountPaise),
+    money(expense.amountPaise),
     `${nameOfUid(expense.deletedBy)}${
       expense.deletedAtMs ? `, ${formatDateTimeOf(new Date(expense.deletedAtMs), dateFormat)}` : ''
     }`,
@@ -132,32 +138,32 @@ export function buildExport(input: ExportInput): ExportModel {
       when,
       expense.note ? `${description}\n${expense.note}` : description,
       payer,
-      pdfMoney(expense.amountPaise),
+      money(expense.amountPaise),
       isSettlement
-        ? transferLines(expense)
-        : expense.splits.map((s) => `${nameOf(s.memberId)} ${pdfMoney(s.owedPaise)}`).join('\n'),
+        ? transferLines(expense, money)
+        : expense.splits.map((s) => `${nameOf(s.memberId)} ${money(s.owedPaise)}`).join('\n'),
     ]);
 
     if (expense.receiptPath) {
       receipts.push({
         path: expense.receiptPath,
-        caption: `${pdfDate(expense.date, dateFormat)} · ${description} · ${pdfMoney(expense.amountPaise)} · paid by ${payer}`,
+        caption: `${pdfDate(expense.date, dateFormat)} · ${description} · ${money(expense.amountPaise)} · paid by ${payer}`,
         // ISO date first, so the files sort by date in any file manager.
-        fileStem: `${expense.date} ${description} ${pdfMoney(expense.amountPaise).replace(/,/g, '')}`,
+        fileStem: `${expense.date} ${description} ${pdfMoney(expense.amountPaise, false).replace(/,/g, '')}`,
       });
     }
   }
 
   const balanceRows: ExportModel['balanceRows'] = input.members.map((member) => {
     const net = netFor(input.balances, member.id);
-    const position = net > 0 ? `is owed ${pdfMoney(net)}` : net < 0 ? `owes ${pdfMoney(-net)}` : 'settled up';
+    const position = net > 0 ? `is owed ${money(net)}` : net < 0 ? `owes ${money(-net)}` : 'settled up';
     return [member.name, position];
   });
 
   const transferRows: ExportModel['transferRows'] = suggestSettlements(input.balances).map((t) => [
     nameOf(t.from),
     nameOf(t.to),
-    pdfMoney(t.amountPaise),
+    money(t.amountPaise),
   ]);
 
   return {

@@ -43,7 +43,11 @@ const input = (overrides: Partial<ExportInput> = {}): ExportInput => ({
 });
 
 describe('pdf formatting', () => {
-  it('spells the currency out, because Helvetica has no rupee glyph', () => {
+  it('uses ₹ with the embedded font', () => {
+    expect(pdfMoney(123456, true)).toBe('₹1,234.56');
+  });
+
+  it('spells the currency out without it, because Helvetica has no rupee glyph', () => {
     expect(pdfMoney(123456)).toBe('Rs 1,234.56');
     expect(pdfMoney(5)).toBe('Rs 0.05');
     expect(pdfMoney(123456)).not.toContain('₹');
@@ -114,6 +118,15 @@ describe('buildExport', () => {
 
   it('has no deleted section when nothing was deleted', () => {
     expect(buildExport(input()).deletedRows).toEqual([]);
+  });
+
+  it('prints ₹ when the PDF has a font for it, and keeps ZIP names plain', () => {
+    const model = buildExport(input({ rupeeSign: true, expenses: [expense({ receiptPath: 'receipts/g/a.webp' })] }));
+    expect(model.ledgerRows[0]![3]).toBe('₹300.01');
+    expect(model.ledgerRows[0]![4]).toBe('Asha ₹150.01\nBilal ₹150.00');
+    expect(model.balanceRows[0]).toEqual(['Asha', 'is owed ₹150.00']);
+    expect(model.receipts[0]!.caption).toBe('22-aug-26 · Dinner · ₹300.01 · paid by Asha');
+    expect(model.receipts[0]!.fileStem).toBe('2026-08-22 Dinner Rs 300.01');
   });
 
   it('puts the note under the description', () => {
