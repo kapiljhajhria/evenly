@@ -32,6 +32,16 @@ function assertProductionEnv(mode: string, envDir: string): void {
     );
   }
 
+  // Optional — the app works without it — but a build that silently lacks it
+  // ships "Notifications are not set up" to every device. Say so loudly.
+  if (!env['VITE_FIREBASE_VAPID_KEY']) {
+    console.warn(
+      `\n\x1b[33m⚠  VITE_FIREBASE_VAPID_KEY is not set — this build will have push notifications\n` +
+        `   turned off ("not set up for this build of the app"). Add it to\n` +
+        `   web/.env.production.local — see DEPLOY.md, "Push notifications (one-time)".\x1b[0m\n`,
+    );
+  }
+
   if (env['VITE_FIREBASE_PROJECT_ID']?.startsWith('demo-')) {
     throw new Error(
       `\n\nRefusing to build against the emulator project ` +
