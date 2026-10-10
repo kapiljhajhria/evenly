@@ -3,14 +3,68 @@ import { getDownloadURL, ref } from 'firebase/storage';
 import type { BalanceMap, Expense } from '@app/shared';
 import { storage } from '../../lib/firebase.js';
 import { expensesCol } from '../../lib/paths.js';
-import { buildExport, exportFileName, pdfMoney, type ExportModel } from './model.js';
+import { buildExport, exportFileName, pdfMoney, zipEntryNames, zipFileName, type ExportModel } from './model.js';
 import { insertionIndices, receiptKind } from '../receipt/kind.js';
 import { usePreferences } from '../../stores/preferences.js';
 
 export type ExportProgress =
   | { step: 'loading' }
   | { step: 'receipts'; done: number; total: number }
+  | { step: 'originals'; done: number; total: number }
   | { step: 'saving' };
+
+type ExportArgs = {
+  groupId: string;
+  groupName: string;
+  closed: boolean;
+  balances: BalanceMap;
+  members: { id: string; name: string; uid?: string | null }[];
+  onProgress?: (progress: ExportProgress) => void;
+};
+
+/** Download the group's PDF report. */
+export async function exportGroupPdf(args: ExportArgs): Promise<ExportResult> {
+  const built = await buildGroupPdf(args);
+  args.onProgress?.({ step: 'saving' });
+  downloadBlob(new Blob([built.bytes as BlobPart], { type: 'application/pdf' }), built.fileName);
+  exportedThisSession.add(args.groupId);
+  return built.result;
+}
+
+/**
+ * Download a ZIP: the same PDF report, plus every receipt as its ORIGINAL
+ * file under receipts/ — for a reimbursement claim, or a password-protected
+ * PDF bill that cannot be merged into the report. Built on the device, like
+ * the PDF; fflate is loaded only when someone asks for a ZIP.
+ */
+export async function exportGroupZip(args: ExportArgs): Promise<ExportResult & { originals: number }> {
+  const [built, { zip }] = await Promise.all([buildGroupPdf(args), import('fflate')]);
+  const names = zipEntryNames(built.model.receipts);
+  const files: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = {
+    [built.fileName]: [built.bytes, { level: 0 }],
+  };
+  let originals = 0;
+  for (const [index, receipt] of built.model.receipts.entries()) {
+    args.onProgress?.({ step: 'originals', done: index, total: built.model.receipts.length });
+    try {
+      const response = await fetch(await getDownloadURL(ref(storage, receipt.path)));
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      // Photos and PDFs are already compressed: store, do not deflate again.
+      files[names[index]!] = [new Uint8Array(await response.arrayBuffer()), { level: 0 }];
+      originals += 1;
+    } catch (error) {
+      // The report already has a page saying why; the ZIP just goes without it.
+      console.warn('[export] original not added to zip', receipt.path, error);
+    }
+  }
+  args.onProgress?.({ step: 'saving' });
+  const bytes = await new Promise<Uint8Array>((resolve, reject) =>
+    zip(files, (error, data) => (error ? reject(error) : resolve(data))),
+  );
+  downloadBlob(new Blob([bytes as BlobPart], { type: 'application/zip' }), zipFileName(args.groupName, new Date()));
+  exportedThisSession.add(args.groupId);
+  return { ...built.result, originals };
+}
 
 export interface ExportResult {
   receiptCount: number;
@@ -39,7 +93,7 @@ interface PdfAttachment {
 }
 
 /**
- * Builds and downloads the group's PDF, entirely client-side (brief §3): the
+ * Builds the group's PDF in memory, entirely client-side (brief §3): the
  * ledger and balances first, then every receipt, one per page with a caption.
  * Receipts are never interleaved with table rows.
  *
@@ -48,14 +102,9 @@ interface PdfAttachment {
  * are made to download before a group is deleted, so a placeholder would not
  * do. pdf-lib is only loaded when there is a PDF to merge.
  */
-export async function exportGroupPdf(args: {
-  groupId: string;
-  groupName: string;
-  closed: boolean;
-  balances: BalanceMap;
-  members: { id: string; name: string; uid?: string | null }[];
-  onProgress?: (progress: ExportProgress) => void;
-}): Promise<ExportResult> {
+async function buildGroupPdf(
+  args: ExportArgs,
+): Promise<{ bytes: Uint8Array; fileName: string; model: ExportModel; result: ExportResult }> {
   const { onProgress } = args;
   onProgress?.({ step: 'loading' });
 
@@ -152,16 +201,15 @@ export async function exportGroupPdf(args: {
     doc.addImage(image.dataUrl, 'JPEG', MARGIN + (boxWidth - width) / 2, top, width, height);
   }
 
-  onProgress?.({ step: 'saving' });
   const fileName = exportFileName(args.groupName, generatedAt);
+  let bytes: Uint8Array;
   if (pdfLib && attachments.length > 0) {
-    downloadPdf(await mergeAttachments(pdfLib, doc, attachments), fileName);
+    bytes = await mergeAttachments(pdfLib, doc, attachments);
   } else {
     addPageNumbers(doc, pageWidth, pageHeight);
-    doc.save(fileName);
+    bytes = new Uint8Array(doc.output('arraybuffer'));
   }
-  exportedThisSession.add(args.groupId);
-  return { receiptCount: model.receipts.length, missingReceipts };
+  return { bytes, fileName, model, result: { receiptCount: model.receipts.length, missingReceipts } };
 }
 
 /**
@@ -200,8 +248,8 @@ async function mergeAttachments(pdfLib: PdfLib, doc: Doc, attachments: PdfAttach
   return merged.save();
 }
 
-function downloadPdf(bytes: Uint8Array, fileName: string): void {
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
+function downloadBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;

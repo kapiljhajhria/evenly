@@ -35,6 +35,8 @@ export interface ExportInput {
 export interface ExportReceipt {
   path: string;
   caption: string;
+  /** `2026-08-22 Hotel Rs 12000.00` — the original file's name in the ZIP, before the extension. */
+  fileStem: string;
 }
 
 export interface ExportModel {
@@ -140,6 +142,8 @@ export function buildExport(input: ExportInput): ExportModel {
       receipts.push({
         path: expense.receiptPath,
         caption: `${pdfDate(expense.date, dateFormat)} · ${description} · ${pdfMoney(expense.amountPaise)} · paid by ${payer}`,
+        // ISO date first, so the files sort by date in any file manager.
+        fileStem: `${expense.date} ${description} ${pdfMoney(expense.amountPaise).replace(/,/g, '')}`,
       });
     }
   }
@@ -180,3 +184,26 @@ export function exportFileName(groupName: string, at: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `evenly-${slug}-${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}.pdf`;
 }
+
+/** Characters no common file system accepts in a name, plus control characters. */
+const UNSAFE = /[\\/:*?"<>|\u0000-\u001f]+/g;
+
+/**
+ * Unique, safe names for the receipts in the ZIP: `receipts/<stem>.<ext>`,
+ * with " (2)", " (3)"… for the same expense name and amount on the same day.
+ * The extension comes from the stored file, so a PDF bill stays a .pdf.
+ */
+export function zipEntryNames(receipts: Pick<ExportReceipt, 'path' | 'fileStem'>[]): string[] {
+  const used = new Set<string>();
+  return receipts.map(({ path, fileStem }) => {
+    const ext = /\.([a-z0-9]+)$/i.exec(path)?.[1]?.toLowerCase() ?? 'bin';
+    const stem = fileStem.replace(UNSAFE, ' ').replace(/\s+/g, ' ').trim().slice(0, 80).trim() || 'receipt';
+    let name = `receipts/${stem}.${ext}`;
+    for (let n = 2; used.has(name.toLowerCase()); n++) name = `receipts/${stem} (${n}).${ext}`;
+    used.add(name.toLowerCase());
+    return name;
+  });
+}
+
+/** `evenly-goa-trip-2026-10-10.zip`, matching the PDF's name. */
+export const zipFileName = (groupName: string, at: Date): string => exportFileName(groupName, at).replace(/\.pdf$/, '.zip');

@@ -239,6 +239,7 @@ export function GroupPage() {
           closed={!isActive}
           balances={group.balances ?? {}}
           members={exportMembers}
+          withZip
         />
       </Card>
 

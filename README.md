@@ -41,7 +41,7 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (221 tests, no emulator)
+npm test                 # pure logic in shared/ and web/ (226 tests, no emulator)
 npm run test:rules       # Firestore + Storage rules vs the emulators (166 tests)
 npm run test:integration # functions + real client modules (95 tests)
 npm run test:all         # all of the above
@@ -205,7 +205,10 @@ Close now / Reopen (`setGroupClosed`; reopening restarts the quiet week so the
 nightly `autoClose` does not re-close it), and a day's notice before
 auto-close. The timing rules live in `shared/src/lifecycle.ts`. Install
 prompt (one tap on Android/desktop, Share-sheet steps on iPhone) on the home
-page and in Settings, and an honest offline mode.
+page and in Settings, and an honest offline mode. "Download all files (.zip)"
+next to the PDF: the same report plus every receipt as its original file
+(`receipts/<date> <description> Rs <amount>.<ext>`), built on the device
+with fflate.
 
 Next, per the brief §9: close flow + `autoClose` UI, PWA polish, then FCM
 push in v1.5.

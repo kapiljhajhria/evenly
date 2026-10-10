@@ -1,15 +1,21 @@
 import { useState } from 'react';
 import type { BalanceMap } from '@app/shared';
 import { Button, ErrorNote } from '../../components/ui.js';
-import { exportGroupPdf, type ExportProgress, type ExportResult } from './pdf.js';
+import { exportGroupPdf, exportGroupZip, type ExportProgress, type ExportResult } from './pdf.js';
 
 function progressLabel(progress: ExportProgress | null): string {
   if (!progress || progress.step === 'loading') return 'Preparing…';
   if (progress.step === 'receipts') return `Adding receipts ${progress.done + 1}/${progress.total}…`;
+  if (progress.step === 'originals') return `Collecting files ${progress.done + 1}/${progress.total}…`;
   return 'Saving…';
 }
 
-/** Any member can export, open or closed group (brief §3). */
+type Kind = 'pdf' | 'zip';
+
+/**
+ * Any member can export, open or closed group (brief §3). `withZip` adds the
+ * "all files" option: the same PDF plus every receipt's original file.
+ */
 export function ExportButton({
   groupId,
   groupName,
@@ -18,6 +24,7 @@ export function ExportButton({
   members,
   label = 'Download PDF',
   variant = 'secondary',
+  withZip = false,
   onExported,
 }: {
   groupId: string;
@@ -27,40 +34,66 @@ export function ExportButton({
   members: { id: string; name: string; uid?: string | null }[];
   label?: string;
   variant?: 'primary' | 'secondary';
+  withZip?: boolean;
   onExported?: (result: ExportResult) => void;
 }) {
   const [progress, setProgress] = useState<ExportProgress | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<ExportResult | null>(null);
+  const [busy, setBusy] = useState<Kind | null>(null);
+  const [done, setDone] = useState<{ kind: Kind; result: ExportResult & { originals?: number } } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const run = async () => {
-    setBusy(true);
+  const run = async (kind: Kind) => {
+    setBusy(kind);
     setError(null);
-    setResult(null);
+    setDone(null);
     try {
-      const done = await exportGroupPdf({ groupId, groupName, closed, balances, members, onProgress: setProgress });
-      setResult(done);
-      onExported?.(done);
+      const args = { groupId, groupName, closed, balances, members, onProgress: setProgress };
+      const result = kind === 'zip' ? await exportGroupZip(args) : await exportGroupPdf(args);
+      setDone({ kind, result });
+      onExported?.(result);
     } catch (err) {
       setError((err as Error).message || 'The export did not work. Try again.');
     } finally {
-      setBusy(false);
+      setBusy(null);
       setProgress(null);
     }
   };
 
+  const missingOriginals =
+    done?.kind === 'zip' && done.result.originals !== undefined
+      ? done.result.receiptCount - done.result.originals
+      : 0;
+
   return (
     <div className="space-y-2">
-      <Button type="button" variant={variant} onClick={run} busy={busy} className="w-full">
-        {busy ? progressLabel(progress) : label}
+      <Button type="button" variant={variant} onClick={() => run('pdf')} busy={busy === 'pdf'} disabled={busy !== null} className="w-full">
+        {busy === 'pdf' ? progressLabel(progress) : label}
       </Button>
+      {withZip && (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => run('zip')}
+            busy={busy === 'zip'}
+            disabled={busy !== null}
+            className="w-full"
+          >
+            {busy === 'zip' ? progressLabel(progress) : 'Download all files (.zip)'}
+          </Button>
+          <p className="text-center text-xs text-slate-400">The PDF plus every receipt as its original file.</p>
+        </>
+      )}
       <ErrorNote>{error}</ErrorNote>
-      {result && (
+      {done && (
         <p className="text-xs text-slate-500">
           Downloaded.
-          {result.missingReceipts > 0 &&
-            ` ${result.missingReceipts} of ${result.receiptCount} receipts could not be added — their pages say why.`}
+          {done.kind === 'pdf' &&
+            done.result.missingReceipts > 0 &&
+            ` ${done.result.missingReceipts} of ${done.result.receiptCount} receipts could not be added — their pages say why.`}
+          {done.kind === 'zip' &&
+            missingOriginals > 0 &&
+            ` ${missingOriginals} of ${done.result.receiptCount} original files could not be downloaded.`}
         </p>
       )}
     </div>

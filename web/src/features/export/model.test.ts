@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { buildExport, exportFileName, pdfDate, pdfMoney, type ExportExpense, type ExportInput } from './model.js';
+import {
+  buildExport,
+  exportFileName,
+  pdfDate,
+  pdfMoney,
+  zipEntryNames,
+  zipFileName,
+  type ExportExpense,
+  type ExportInput,
+} from './model.js';
 
 const members = [
   { id: 'm-a', name: 'Asha' },
@@ -161,8 +170,8 @@ describe('buildExport', () => {
       }),
     );
     expect(model.receipts).toEqual([
-      { path: 'receipts/g/a.jpg', caption: '22-aug-26 · Dinner · Rs 300.01 · paid by Asha' },
-      { path: 'receipts/g/b.webp', caption: '23-aug-26 · Cab · Rs 300.01 · paid by Asha' },
+      { path: 'receipts/g/a.jpg', caption: '22-aug-26 · Dinner · Rs 300.01 · paid by Asha', fileStem: '2026-08-22 Dinner Rs 300.01' },
+      { path: 'receipts/g/b.webp', caption: '23-aug-26 · Cab · Rs 300.01 · paid by Asha', fileStem: '2026-08-23 Cab Rs 300.01' },
     ]);
   });
 
@@ -195,5 +204,49 @@ describe('exportFileName', () => {
 
   it('falls back when the name has nothing usable', () => {
     expect(exportFileName('गोवा', new Date(2026, 0, 5))).toBe('evenly-group-2026-01-05.pdf');
+  });
+});
+
+describe('zip entries', () => {
+  it('names each original receipt by date, description and amount, keeping its type', () => {
+    const model = buildExport(
+      input({
+        expenses: [
+          expense({ id: 'a', description: 'Hotel', amountPaise: 1200000, receiptPath: 'receipts/g/a.pdf' }),
+          expense({ id: 'b', description: 'Dinner', receiptPath: 'receipts/g/b.webp', date: '2026-08-23' }),
+        ],
+      }),
+    );
+    expect(zipEntryNames(model.receipts)).toEqual([
+      'receipts/2026-08-22 Hotel Rs 12000.00.pdf',
+      'receipts/2026-08-23 Dinner Rs 300.01.webp',
+    ]);
+  });
+
+  it('keeps same-day duplicates apart', () => {
+    const names = zipEntryNames([
+      { path: 'receipts/g/1.jpg', fileStem: '2026-08-22 Cab Rs 200.00' },
+      { path: 'receipts/g/2.jpg', fileStem: '2026-08-22 Cab Rs 200.00' },
+      { path: 'receipts/g/3.JPG', fileStem: '2026-08-22 cab Rs 200.00' },
+    ]);
+    expect(names).toEqual([
+      'receipts/2026-08-22 Cab Rs 200.00.jpg',
+      'receipts/2026-08-22 Cab Rs 200.00 (2).jpg',
+      'receipts/2026-08-22 cab Rs 200.00 (3).jpg',
+    ]);
+  });
+
+  it('strips characters file systems reject, and folders hidden in a description', () => {
+    expect(zipEntryNames([{ path: 'r/x.webp', fileStem: '2026-08-22 a/b: c?*"<>| d\\..\\e' }])).toEqual([
+      'receipts/2026-08-22 a b c d .. e.webp',
+    ]);
+  });
+
+  it('never produces an empty name', () => {
+    expect(zipEntryNames([{ path: 'r/x.pdf', fileStem: '///' }])).toEqual(['receipts/receipt.pdf']);
+  });
+
+  it('names the zip like the PDF', () => {
+    expect(zipFileName('Goa Trip', new Date(2026, 9, 10))).toBe('evenly-goa-trip-2026-10-10.zip');
   });
 });
