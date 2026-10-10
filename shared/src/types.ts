@@ -136,6 +136,12 @@ export interface Expense<TS = TimestampLike> {
    * on everything else, and on every payment recorded before it existed.
    */
   parts?: SettlementPart[] | null;
+  /**
+   * "Not sure this is right — please check", e.g. a guessed payer. Still
+   * counts in balances; the app shows it in orange until confirmed. Optional:
+   * absent (every expense recorded before it existed) means confirmed.
+   */
+  unconfirmed?: boolean;
   amountPaise: Paise;
   /** Exactly one payer. Multi-payer is deliberately not supported. */
   paidBy: MemberId;
@@ -148,6 +154,19 @@ export interface Expense<TS = TimestampLike> {
   createdAt: TS;
   updatedAt: TS;
 }
+
+/**
+ * Discussion on an expense: `groups/{groupId}/comments/{commentId}`. Flat per
+ * group rather than nested, so one listener gives every expense's thread.
+ */
+export interface ExpenseComment<TS = TimestampLike> {
+  expenseId: ExpenseId;
+  uid: Uid;
+  text: string;
+  createdAt: TS;
+}
+
+export const MAX_COMMENT_LENGTH = 1000;
 
 export interface ExpenseHistoryEntry<TS = TimestampLike> {
   editedBy: Uid;

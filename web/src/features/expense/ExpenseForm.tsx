@@ -31,6 +31,7 @@ export interface ExpenseFormValues {
   receipt: EncodedReceipt | null;
   /** Settlement mode only: the transfer breakdown, or null for one amount. */
   parts: SettlementPart[] | null;
+  unconfirmed: boolean;
 }
 
 export interface ExpenseFormInitial {
@@ -44,6 +45,7 @@ export interface ExpenseFormInitial {
   splitType?: SplitType;
   splitValue?: Record<string, number>;
   parts?: SettlementPart[] | null;
+  unconfirmed?: boolean;
 }
 
 /**
@@ -96,6 +98,7 @@ export function ExpenseForm({
     initial?.splitValue ?? Object.fromEntries(members.map((m) => [m.id, 1])),
   );
   const [receipt, setReceipt] = useState<EncodedReceipt | null>(null);
+  const [unconfirmed, setUnconfirmed] = useState(initial?.unconfirmed ?? false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,6 +124,7 @@ export function ExpenseForm({
         splitInputs: Object.entries(splitValue).map(([memberId, input]) => ({ memberId, input })),
         receipt: withReceipt ? receipt : null,
         parts: settlementMode ? payment.parts : null,
+        unconfirmed: !settlementMode && unconfirmed,
       });
     } catch (err) {
       setError((err as Error).message);
@@ -206,6 +210,28 @@ export function ExpenseForm({
       </Field>
 
       {withReceipt && !settlementMode && <ReceiptField value={receipt} onChange={setReceipt} />}
+
+      {!settlementMode && (
+        <label
+          className={`flex items-start gap-3 rounded-xl p-3 ring-1 transition ${
+            unconfirmed ? 'bg-amber-50 ring-amber-300' : 'bg-white ring-slate-200'
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={unconfirmed}
+            onChange={(e) => setUnconfirmed(e.target.checked)}
+            className="mt-0.5 size-4 accent-amber-600"
+          />
+          <span className="text-sm">
+            <span className="block font-medium text-slate-800">Not sure about this — mark as not confirmed</span>
+            <span className="block text-xs text-slate-500">
+              It still counts in balances, but shows in orange until someone confirms it. Say what is unclear in
+              Notes, e.g. who paid.
+            </span>
+          </span>
+        </label>
+      )}
 
       {!settlementMode && (
         <SplitEditor

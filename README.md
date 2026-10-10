@@ -41,9 +41,9 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (171 tests, no emulator)
-npm run test:rules       # Firestore + Storage rules vs the emulators (126 tests)
-npm run test:integration # functions + real client modules (60 tests)
+npm test                 # pure logic in shared/ and web/ (176 tests, no emulator)
+npm run test:rules       # Firestore + Storage rules vs the emulators (145 tests)
+npm run test:integration # functions + real client modules (67 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
 ```
@@ -103,6 +103,14 @@ workspace-only version spec is unresolvable from the public registry.
   shape only, because per-transfer checks exceed the rules' 1000-expression
   budget at ~7 transfers; `usableParts()` hides any breakdown that does not
   sum exactly to the amount, and `updateExpense` validates it fully on edit.
+- **"Not confirmed" still counts.** `unconfirmed: true` marks a guess (often
+  the payer) for the group to check; balances include it as recorded.
+  Confirming goes through `updateExpense` so it lands in history, and is the
+  one change the recorder may make without owning the expense.
+- **Comments are flat per group** (`groups/{g}/comments`, keyed by
+  `expenseId`), so the list gets every thread from one listener and the
+  expense doc never carries a counter. No edits; delete and re-post.
+  `onExpenseWrite` deletes an expense's comments with it.
 - **Fields added after launch are optional, always.** `note`, `time` and
   `location` on an expense are validated as "absent OR null OR valid". An
   update sends the whole document, so requiring any of them would have locked

@@ -31,6 +31,13 @@ function balanceRelevant(expense: StoredExpense | undefined): StoredExpense | nu
  */
 export const onExpenseWrite = onDocumentWritten('groups/{groupId}/expenses/{expenseId}', async (event) => {
   const { groupId, expenseId } = event.params;
+
+  // An expense's comments go with it. Before every early return below — a
+  // deleted expense with malformed splits, or a redelivered event, must still
+  // clean up — and safe to repeat, so at-least-once delivery is fine.
+  if (event.data?.before.exists && !event.data.after.exists) {
+    await deleteComments(groupId, expenseId);
+  }
   const before = balanceRelevant(event.data?.before.data() as StoredExpense | undefined);
   const after = balanceRelevant(event.data?.after.data() as StoredExpense | undefined);
 
@@ -83,3 +90,18 @@ export const onExpenseWrite = onDocumentWritten('groups/{groupId}/expenses/{expe
     }
   }
 });
+
+async function deleteComments(groupId: string, expenseId: string): Promise<void> {
+  try {
+    const snap = await groupRef(groupId).collection('comments').where('expenseId', '==', expenseId).get();
+    // A batch takes 500 writes; one expense's thread will not get near that,
+    // but chunk anyway rather than fail on a long argument.
+    for (let i = 0; i < snap.docs.length; i += 450) {
+      const batch = db.batch();
+      for (const doc of snap.docs.slice(i, i + 450)) batch.delete(doc.ref);
+      await batch.commit();
+    }
+  } catch (error) {
+    logger.warn('comment cleanup failed', { groupId, expenseId, error });
+  }
+}

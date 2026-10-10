@@ -33,6 +33,8 @@ interface Changes {
    * its sum; null removes it. Omitted = leave it, unless the amount changes.
    */
   parts?: unknown;
+  /** Mark as not confirmed (true) or confirmed (false). */
+  unconfirmed?: boolean;
 }
 
 /** Fields worth snapshotting into history when they change. */
@@ -63,6 +65,9 @@ function validate(changes: Changes): void {
   }
   if (changes.location !== undefined && changes.location !== null && !isValidLocation(changes.location)) {
     throw new HttpsError('invalid-argument', 'That location is not valid.');
+  }
+  if (changes.unconfirmed !== undefined && typeof changes.unconfirmed !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Confirmed must be true or false.');
   }
   if (changes.amountPaise !== undefined) {
     if (!Number.isSafeInteger(changes.amountPaise) || changes.amountPaise <= 0) {
@@ -121,7 +126,12 @@ export const updateExpense = onCall(async (request) => {
     const payerSnap = await tx.get(membersRef(groupId).doc(before.paidBy));
     const payerUid = (payerSnap.data() as Member<Timestamp> | undefined)?.uid ?? null;
     const owns = payerUid === uid || (payerUid === null && before.createdBy === uid);
-    if (!owns) {
+    // Confirming (or flagging) is the one change the recorder may also make:
+    // they are usually the one who was unsure, and may be the first to find
+    // out. Anything else, including fixing the payer, stays with the owner.
+    const onlyConfirmation = Object.keys(changes).every((key) => key === 'unconfirmed');
+    const mayConfirm = onlyConfirmation && before.createdBy === uid;
+    if (!owns && !mayConfirm) {
       throw new HttpsError(
         'permission-denied',
         'Only the person who paid can edit this. Ask them to fix it.',
@@ -203,13 +213,22 @@ export const updateExpense = onCall(async (request) => {
       parts,
     };
 
-    const changedFields = TRACKED.filter(
+    const changedFields: string[] = TRACKED.filter(
       (field) => JSON.stringify(next[field]) !== JSON.stringify(before[field] ?? null),
     );
+    // Compared as booleans: an old expense has no field at all, and that is
+    // the same as false — writing false must not count as an edit.
+    const wasUnconfirmed = before.unconfirmed === true;
+    if (changes.unconfirmed !== undefined && changes.unconfirmed !== wasUnconfirmed) {
+      next['unconfirmed'] = changes.unconfirmed;
+      changedFields.push('unconfirmed');
+    }
     if (changedFields.length === 0) return { changed: [] as string[] };
 
     const snapshot = Object.fromEntries(
-      changedFields.map((field) => [field, before[field] ?? null]),
+      changedFields.map((field) =>
+        field === 'unconfirmed' ? [field, wasUnconfirmed] : [field, before[field as keyof Expense<Timestamp>] ?? null],
+      ),
     );
 
     tx.set(eRef.collection('history').doc(), {
@@ -219,7 +238,7 @@ export const updateExpense = onCall(async (request) => {
     });
     tx.update(eRef, { ...next, updatedAt: FieldValue.serverTimestamp() });
 
-    return { changed: changedFields as unknown as string[] };
+    return { changed: changedFields };
   });
 
   logger.info('expense edited', { groupId, expenseId, by: uid, changed: result.changed });

@@ -3,7 +3,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase.js';
 import type { Expense, ExpenseLocation, ExpenseType, SettlementPart, SplitType } from '@app/shared';
 import { assertSplitsValid, computeSplits, normalizeParts, partsTotal, settlementSplits } from '@app/shared';
-import { expenseDoc, expensesCol } from '../../lib/paths.js';
+import { commentDoc, commentsCol, expenseDoc, expensesCol } from '../../lib/paths.js';
 
 export interface NewExpenseInput {
   groupId: string;
@@ -21,6 +21,8 @@ export interface NewExpenseInput {
   createdBy: string;
   type?: ExpenseType;
   receiptPending?: boolean;
+  /** "Not sure who paid" — shown in orange until someone confirms it. */
+  unconfirmed?: boolean;
 }
 
 export async function addExpense(input: NewExpenseInput): Promise<string> {
@@ -41,6 +43,8 @@ export async function addExpense(input: NewExpenseInput): Promise<string> {
     splits,
     receiptStatus: input.receiptPending ? 'pending' : 'none',
     receiptPath: null,
+    // Only written when set, so confirmed expenses keep their old shape.
+    ...(input.unconfirmed ? { unconfirmed: true } : {}),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -102,6 +106,8 @@ export interface UpdateExpenseChanges {
   splitInputs?: { memberId: string; input: number }[];
   /** Settlements only. null removes the breakdown. */
   parts?: SettlementPart[] | null;
+  /** The recorder may send this alone; anything else needs the owner. */
+  unconfirmed?: boolean;
 }
 
 /**
@@ -130,9 +136,9 @@ export function expensePermissions(args: {
   uid: string | undefined;
   groupCreatedBy: string;
   groupActive: boolean;
-}): { canEdit: boolean; canDelete: boolean; canManageReceipt: boolean } {
+}): { canEdit: boolean; canDelete: boolean; canManageReceipt: boolean; canConfirm: boolean } {
   const { expense, payerUid, uid, groupCreatedBy, groupActive } = args;
-  if (!groupActive || !uid) return { canEdit: false, canDelete: false, canManageReceipt: false };
+  if (!groupActive || !uid) return { canEdit: false, canDelete: false, canManageReceipt: false, canConfirm: false };
   const owns = payerUid === uid || ((payerUid ?? null) === null && expense.createdBy === uid);
   return {
     canEdit: owns,
@@ -140,5 +146,19 @@ export function expensePermissions(args: {
     // The recorder too: they are usually the one holding the paper receipt,
     // even when the expense was paid by someone else. Settlements have none.
     canManageReceipt: expense.type !== 'settlement' && (owns || expense.createdBy === uid),
+    // Mirrors updateExpense: the payer, or whoever recorded it.
+    canConfirm: owns || expense.createdBy === uid,
   };
+}
+
+export async function confirmExpense(groupId: string, expenseId: string, confirmed: boolean): Promise<void> {
+  await updateExpense({ groupId, expenseId, changes: { unconfirmed: !confirmed } });
+}
+
+export async function addComment(groupId: string, expenseId: string, uid: string, text: string): Promise<void> {
+  await addDoc(commentsCol(groupId), { expenseId, uid, text: text.trim(), createdAt: serverTimestamp() });
+}
+
+export async function deleteComment(groupId: string, commentId: string): Promise<void> {
+  await deleteDoc(commentDoc(groupId, commentId));
 }

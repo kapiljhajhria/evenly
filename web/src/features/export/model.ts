@@ -8,7 +8,7 @@ import { formatDate, formatDateTimeOf, formatPaise, formatTime, netFor, suggestS
 
 export type ExportExpense = Pick<
   Expense<unknown>,
-  'type' | 'description' | 'note' | 'date' | 'time' | 'amountPaise' | 'paidBy' | 'splits' | 'receiptPath' | 'parts'
+  'type' | 'description' | 'note' | 'date' | 'time' | 'amountPaise' | 'paidBy' | 'splits' | 'receiptPath' | 'parts' | 'unconfirmed'
 > & { id: string };
 
 export interface ExportInput {
@@ -88,9 +88,10 @@ export function buildExport(input: ExportInput): ExportModel {
   for (const expense of expenses) {
     const isSettlement = expense.type === 'settlement';
     const payer = nameOf(expense.paidBy);
-    const description = isSettlement
-      ? `${payer} paid ${nameOf(expense.splits[0]?.memberId ?? '')} (settlement)`
-      : expense.description;
+    const description =
+      (isSettlement
+        ? `${payer} paid ${nameOf(expense.splits[0]?.memberId ?? '')} (settlement)`
+        : expense.description) + (expense.unconfirmed ? ' [NOT CONFIRMED]' : '');
     const time = formatTime(expense.time);
     const when = time ? `${pdfDate(expense.date)}\n${time}` : pdfDate(expense.date);
 

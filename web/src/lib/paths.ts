@@ -12,6 +12,10 @@ export const expenseDoc = (groupId: string, expenseId: string) =>
 export const historyCol = (groupId: string, expenseId: string) =>
   collection(db, 'groups', groupId, 'expenses', expenseId, 'history');
 export const userDoc = (uid: string) => doc(db, 'users', uid);
+/** Flat per group, keyed by expenseId — see the comments rule in firestore.rules. */
+export const commentsCol = (groupId: string) => collection(db, 'groups', groupId, 'comments');
+export const commentDoc = (groupId: string, commentId: string) =>
+  doc(db, 'groups', groupId, 'comments', commentId);
 /** Powers the home page: every slot claimed by me, across all groups. */
 export const allMembers = () => collectionGroup(db, 'members');
 

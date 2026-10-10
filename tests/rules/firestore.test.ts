@@ -5,8 +5,8 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
-  collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc,
-  where, writeBatch, Timestamp,
+  addDoc, collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc,
+  updateDoc, where, writeBatch, Timestamp,
 } from 'firebase/firestore';
 import {
   ALICE, BOB, CAROL, GROUP_ID, SLOT_ALICE, SLOT_BOB, SLOT_GHOST, STRANGER,
@@ -590,6 +590,104 @@ describe('closed groups are read-only', () => {
 
   it('blocks group edits', async () => {
     await assertFails(updateDoc(doc(as(ALICE), 'groups', GROUP_ID), { name: 'Reopened' }));
+  });
+});
+
+describe('expenses: not confirmed', () => {
+  it('accepts an expense flagged as not confirmed', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'unsure'), expenseData({ createdBy: BOB, unconfirmed: true })),
+    );
+  });
+
+  it('still accepts expenses without the flag, as every old one is', async () => {
+    await assertSucceeds(setDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'plain'), expenseData({ createdBy: BOB })));
+  });
+
+  it('rejects a flag that is not a boolean', async () => {
+    await assertFails(
+      setDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'bad'), expenseData({ createdBy: BOB, unconfirmed: 'yes' })),
+    );
+  });
+
+  it('keeps confirming out of direct client writes — it goes through updateExpense, with history', async () => {
+    await seedExpense(env, 'unsure', { paidBy: SLOT_BOB, createdBy: ALICE, unconfirmed: true });
+    await assertFails(updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'unsure'), { unconfirmed: false }));
+  });
+});
+
+describe('comments', () => {
+  const comments = (uid: string) => collection(as(uid), 'groups', GROUP_ID, 'comments');
+  const comment = (uid: string, overrides: Record<string, unknown> = {}) => ({
+    expenseId: 'dinner',
+    uid,
+    text: 'I think Bilal paid this one?',
+    createdAt: serverTimestamp(),
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    await seedExpense(env, 'dinner');
+  });
+
+  it('lets any member comment on an expense', async () => {
+    await assertSucceeds(addDoc(comments(BOB), comment(BOB)));
+  });
+
+  it('lets any member read comments, and nobody else', async () => {
+    await assertSucceeds(getDocs(comments(ALICE)));
+    await assertFails(getDocs(collection(as(STRANGER), 'groups', GROUP_ID, 'comments')));
+  });
+
+  it('blocks comments from outside the group', async () => {
+    await assertFails(addDoc(collection(as(STRANGER), 'groups', GROUP_ID, 'comments'), comment(STRANGER)));
+  });
+
+  it('blocks posting as someone else', async () => {
+    await assertFails(addDoc(comments(BOB), comment(ALICE)));
+  });
+
+  it.each([
+    ['an empty comment', { text: '' }],
+    ['a whitespace-only comment', { text: '   ' }],
+    ['a comment over 1000 characters', { text: 'x'.repeat(1001) }],
+    ['a comment on an expense that does not exist', { expenseId: 'nope' }],
+    ['a back-dated comment', { createdAt: Timestamp.fromMillis(Date.now() - 86_400_000) }],
+    ['extra fields', { pinned: true }],
+  ])('rejects %s', async (_label, overrides) => {
+    await assertFails(addDoc(comments(BOB), comment(BOB, overrides)));
+  });
+
+  it('accepts exactly 1000 characters', async () => {
+    await assertSucceeds(addDoc(comments(BOB), comment(BOB, { text: 'x'.repeat(1000) })));
+  });
+
+  it('never allows editing a comment', async () => {
+    const ref = await addDoc(comments(BOB), comment(BOB));
+    await assertFails(updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'comments', ref.id), { text: 'changed' }));
+  });
+
+  it('lets the author delete their comment, and the group creator delete any', async () => {
+    const mine = await addDoc(comments(BOB), comment(BOB));
+    await assertSucceeds(deleteDoc(doc(as(BOB), 'groups', GROUP_ID, 'comments', mine.id)));
+
+    const another = await addDoc(comments(BOB), comment(BOB));
+    await assertSucceeds(deleteDoc(doc(as(ALICE), 'groups', GROUP_ID, 'comments', another.id)));
+  });
+
+  it('blocks another member from deleting your comment', async () => {
+    const ref = await addDoc(comments(ALICE), comment(ALICE));
+    await assertFails(deleteDoc(doc(as(BOB), 'groups', GROUP_ID, 'comments', ref.id)));
+  });
+
+  it('makes comments read-only once the group is closed', async () => {
+    const ref = await addDoc(comments(BOB), comment(BOB));
+    await env.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), 'groups', GROUP_ID), { status: 'closed' });
+    });
+    await assertFails(addDoc(comments(BOB), comment(BOB)));
+    await assertFails(deleteDoc(doc(as(BOB), 'groups', GROUP_ID, 'comments', ref.id)));
+    await assertSucceeds(getDocs(comments(BOB)));
   });
 });
 

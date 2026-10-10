@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { limit, onSnapshot, orderBy, query, type Timestamp } from 'firebase/firestore';
-import type { Expense, ExpenseHistoryEntry, WithId } from '@app/shared';
-import { expenseDoc, expensesCol, historyCol } from '../lib/paths.js';
+import { limit, onSnapshot, orderBy, query, where, type Timestamp } from 'firebase/firestore';
+import type { Expense, ExpenseComment, ExpenseHistoryEntry, WithId } from '@app/shared';
+import { commentsCol, expenseDoc, expensesCol, historyCol } from '../lib/paths.js';
 
 export const PAGE_SIZE = 25;
 
@@ -123,4 +123,61 @@ export function useExpenseHistory(
   }, [groupId, expenseId]);
 
   return state;
+}
+
+/**
+ * Every expense still marked "not confirmed", across the whole group — not
+ * just the loaded page of the list, so the banner count is always true.
+ * Equality on one field: Firestore's automatic index covers it.
+ */
+export function useUnconfirmedExpenses(groupId: string | undefined): WithId<Expense<Timestamp>>[] {
+  const [expenses, setExpenses] = useState<WithId<Expense<Timestamp>>[]>([]);
+
+  useEffect(() => {
+    if (!groupId) {
+      setExpenses([]);
+      return;
+    }
+    return onSnapshot(
+      query(expensesCol(groupId), where('unconfirmed', '==', true)),
+      (snap) => setExpenses(snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Expense<Timestamp>) }))),
+      () => setExpenses([]),
+    );
+  }, [groupId]);
+
+  return expenses;
+}
+
+export type CommentsByExpense = Record<string, WithId<ExpenseComment<Timestamp>>[]>;
+
+/**
+ * All of a group's comments in one listener, grouped by expense, oldest
+ * first. One subscription for the whole list is the reason comments are
+ * stored flat. Friend-group volumes make reading them all cheap.
+ */
+export function useComments(groupId: string | undefined): CommentsByExpense {
+  const [byExpense, setByExpense] = useState<CommentsByExpense>({});
+
+  useEffect(() => {
+    if (!groupId) {
+      setByExpense({});
+      return;
+    }
+    return onSnapshot(
+      // Pending local writes carry a null createdAt until the server stamps
+      // them; estimate keeps a just-posted comment in place at the bottom.
+      query(commentsCol(groupId), orderBy('createdAt', 'asc')),
+      (snap) => {
+        const next: CommentsByExpense = {};
+        for (const doc of snap.docs) {
+          const comment = { id: doc.id, ...(doc.data({ serverTimestamps: 'estimate' }) as ExpenseComment<Timestamp>) };
+          (next[comment.expenseId] ??= []).push(comment);
+        }
+        setByExpense(next);
+      },
+      () => setByExpense({}),
+    );
+  }, [groupId]);
+
+  return byExpense;
 }

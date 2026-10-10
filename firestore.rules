@@ -226,6 +226,9 @@ service cloud.firestore {
       function wellFormed() {
         return validNote()
           && validParts(request.resource.data)
+          // "Not sure who paid — please check". Optional like every
+          // post-launch field: absent means confirmed.
+          && request.resource.data.get('unconfirmed', false) is bool
           && validTime()
           && validLocation()
           && request.resource.data.amountPaise is int
@@ -287,6 +290,39 @@ service cloud.firestore {
         allow read: if isMember(groupId);
         allow write: if false;
       }
+    }
+
+    // ------------------------------------------------------------- comments
+
+    // Discussion on an expense. Stored flat per group, keyed by expenseId,
+    // rather than under each expense: the expense list then shows every
+    // expense's comment count from ONE listener instead of one per row, and
+    // the expense doc never has to carry a counter (which would need a
+    // trigger, and would re-fire onExpenseWrite on every comment).
+    //
+    // No edits — delete and re-post. Read-only once the group closes.
+    // onExpenseWrite removes an expense's comments when the expense goes;
+    // deleteGroup's recursive delete takes the rest.
+    match /groups/{groupId}/comments/{commentId} {
+      allow read: if isMember(groupId);
+
+      allow create: if isMember(groupId)
+        && isActive(groupId)
+        && request.resource.data.keys().hasAll(['expenseId', 'uid', 'text', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['expenseId', 'uid', 'text', 'createdAt'])
+        && request.resource.data.uid == uid()
+        && request.resource.data.text is string
+        && request.resource.data.text.trim().size() > 0
+        && request.resource.data.text.size() <= 1000
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.expenseId is string
+        && exists(/databases/$(database)/documents/groups/$(groupId)/expenses/$(request.resource.data.expenseId));
+
+      allow update: if false;
+
+      allow delete: if isMember(groupId)
+        && isActive(groupId)
+        && (resource.data.uid == uid() || isCreator(groupId));
     }
   }
 }

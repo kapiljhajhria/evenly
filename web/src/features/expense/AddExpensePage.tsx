@@ -50,6 +50,7 @@ export function AddExpensePage() {
             splitInputs: values.splitInputs,
             createdBy: user.uid,
             receiptPending: values.receipt !== null,
+            unconfirmed: values.unconfirmed,
           });
           if (values.receipt) {
             // Resolves once the photo is parked locally; the upload carries on

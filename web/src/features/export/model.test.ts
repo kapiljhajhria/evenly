@@ -66,6 +66,11 @@ describe('buildExport', () => {
     expect(row).toEqual(['22/08/26', 'Dinner', 'Asha', 'Rs 300.01', 'Asha Rs 150.01\nBilal Rs 150.00']);
   });
 
+  it('flags an expense that was never confirmed', () => {
+    const [row] = buildExport(input({ expenses: [expense({ unconfirmed: true })] })).ledgerRows;
+    expect(row![1]).toBe('Dinner [NOT CONFIRMED]');
+  });
+
   it('puts the note under the description', () => {
     const [row] = buildExport(input({ expenses: [expense({ note: 'Tip separate' })] })).ledgerRows;
     expect(row![1]).toBe('Dinner\nTip separate');

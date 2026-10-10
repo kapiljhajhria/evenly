@@ -377,4 +377,62 @@ describe('updateExpense', () => {
       expect(call.status).toBe('INVALID_ARGUMENT');
     });
   });
+
+  describe('not confirmed', () => {
+    it('lets the payer confirm, recording it in history', async () => {
+      const id = await seedLegacyExpense();
+      await expensesRef().doc(id).update({ unconfirmed: true });
+      const call = await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { unconfirmed: false } });
+      expect(call.ok, call.message).toBe(true);
+      expect(call.result?.['changed']).toEqual(['unconfirmed']);
+      expect((await readExpense(id))['unconfirmed']).toBe(false);
+      const [entry] = await readHistory(id);
+      expect(entry?.['before']).toEqual({ unconfirmed: true });
+    });
+
+    it('lets the recorder confirm even though someone else paid', async () => {
+      // Recorded by the creator, paid by the payer — the creator does not own it.
+      const id = await seedLegacyExpense(PAYER, creator.uid);
+      await expensesRef().doc(id).update({ unconfirmed: true });
+      const call = await callFunction('updateExpense', creator, { groupId, expenseId: id, changes: { unconfirmed: false } });
+      expect(call.ok, call.message).toBe(true);
+      expect((await readExpense(id))['unconfirmed']).toBe(false);
+    });
+
+    it('lets the recorder flag it again, but nothing more', async () => {
+      const id = await seedLegacyExpense(PAYER, creator.uid);
+      const flag = await callFunction('updateExpense', creator, { groupId, expenseId: id, changes: { unconfirmed: true } });
+      expect(flag.ok, flag.message).toBe(true);
+
+      const sneak = await callFunction('updateExpense', creator, {
+        groupId, expenseId: id, changes: { unconfirmed: false, paidBy: OWNER },
+      });
+      expect(sneak.ok).toBe(false);
+      expect(sneak.status).toBe('PERMISSION_DENIED');
+    });
+
+    it('refuses a member who neither paid nor recorded it', async () => {
+      const id = await seedLegacyExpense(OWNER, creator.uid);
+      const call = await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { unconfirmed: false } });
+      expect(call.ok).toBe(false);
+      expect(call.status).toBe('PERMISSION_DENIED');
+    });
+
+    it('treats "confirmed" on an expense that never had the flag as no change', async () => {
+      const id = await seedLegacyExpense();
+      const call = await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { unconfirmed: false } });
+      expect(call.ok, call.message).toBe(true);
+      expect(call.result?.['changed']).toEqual([]);
+      expect(await readHistory(id)).toEqual([]);
+      expect('unconfirmed' in (await readExpense(id))).toBe(false);
+    });
+
+    it('keeps the flag through an ordinary edit', async () => {
+      const id = await seedLegacyExpense();
+      await expensesRef().doc(id).update({ unconfirmed: true });
+      const call = await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { description: 'Brunch' } });
+      expect(call.ok, call.message).toBe(true);
+      expect((await readExpense(id))['unconfirmed']).toBe(true);
+    });
+  });
 });

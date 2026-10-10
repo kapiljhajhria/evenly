@@ -149,6 +149,25 @@ describe('onExpenseWrite', () => {
     expect(doc['balances']).toEqual({ [SLOT_A]: 0, [SLOT_B]: 0 });
   });
 
+  it("deletes an expense's comments with it, and leaves other threads alone", async () => {
+    const doomed = await addExpense({ amountPaise: 1000, paidBy: SLOT_A, memberIds: [SLOT_A, SLOT_B] });
+    const kept = await addExpense({ amountPaise: 2000, paidBy: SLOT_A, memberIds: [SLOT_A, SLOT_B] });
+    const comments = groupRef().collection('comments');
+    for (const expenseId of [doomed, doomed, kept]) {
+      await comments.add({ expenseId, uid: ALICE, text: 'who paid?', createdAt: FieldValue.serverTimestamp() });
+    }
+
+    await groupRef().collection('expenses').doc(doomed).delete();
+
+    const deadline = Date.now() + 15_000;
+    let left = await comments.get();
+    while (left.docs.some((d) => d.data()['expenseId'] === doomed) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      left = await comments.get();
+    }
+    expect(left.docs.map((d) => d.data()['expenseId'])).toEqual([kept]);
+  });
+
   it('nets out an edit rather than double-counting it', async () => {
     const expenseId = await addExpense({ amountPaise: 60000, paidBy: SLOT_A, memberIds: [SLOT_A, SLOT_B] });
     await waitForBalances((b) => b[SLOT_A] === 30000);

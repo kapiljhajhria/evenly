@@ -8,6 +8,9 @@ import { MapLink } from './LocationField.js';
 import { ReceiptLink } from '../receipt/ReceiptViewer.js';
 import { ReceiptRetryButton } from '../receipt/ReceiptSection.js';
 import { needsAttention, viewOf } from '../receipt/status.js';
+import type { CommentsByExpense } from '../../hooks/useExpenses.js';
+import { CommentThread } from './CommentThread.js';
+import { UnconfirmedNotice } from './UnconfirmedNotice.js';
 
 /** "22/08/26 · 7:05 pm" — the time half is skipped on expenses that predate it. */
 function formatWhen(expense: Expense<Timestamp>): string {
@@ -25,6 +28,7 @@ export function ExpenseList({
   groupActive,
   hasMore,
   onLoadMore,
+  comments,
 }: {
   groupId: string;
   expenses: WithId<Expense<Timestamp>>[];
@@ -35,12 +39,14 @@ export function ExpenseList({
   groupActive: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
+  comments: CommentsByExpense;
 }) {
   if (expenses.length === 0) {
     return <EmptyState title="Nothing here yet" body="Add the first expense and balances start moving." />;
   }
 
   const nameOf = (memberId: string): string => membersById[memberId]?.name ?? 'Removed member';
+  const members = Object.values(membersById);
 
   return (
     <div className="space-y-2">
@@ -48,7 +54,7 @@ export function ExpenseList({
         {expenses.map((expense) => {
           const payer = membersById[expense.paidBy];
           const myShare = expense.splits.find((s) => s.memberId === myMemberId);
-          const { canEdit, canDelete, canManageReceipt } = expensePermissions({
+          const { canEdit, canDelete, canManageReceipt, canConfirm } = expensePermissions({
             expense,
             payerUid: payer?.uid,
             uid,
@@ -58,22 +64,35 @@ export function ExpenseList({
           const isSettlement = expense.type === 'settlement';
           const receipt = viewOf(expense);
           const parts = usableParts(expense);
+          const thread = comments[expense.id] ?? [];
+          const unsure = expense.unconfirmed === true;
           const receiver = isSettlement ? nameOf(expense.splits[0]?.memberId ?? '') : null;
           const hasDetail =
             Boolean(expense.note) ||
             Boolean(expense.location) ||
             Boolean(expense.receiptPath) ||
             parts !== null ||
+            thread.length > 0 ||
+            groupActive ||
             canEdit ||
             canDelete ||
             !isSettlement;
 
           return (
-            <li key={expense.id}>
+            <li key={expense.id} className={unsure ? 'border-l-4 border-amber-400 bg-amber-50/70' : ''}>
               <details className="group">
-                <summary className="flex cursor-pointer list-none items-start gap-3 p-3 hover:bg-slate-50">
+                <summary
+                  className={`flex cursor-pointer list-none items-start gap-3 p-3 ${
+                    unsure ? 'hover:bg-amber-100/60' : 'hover:bg-slate-50'
+                  }`}
+                >
                   <Avatar name={payer?.name ?? '?'} photoURL={payer?.photoURL} className="size-9" />
                   <div className="min-w-0 flex-1">
+                    {unsure && (
+                      <span className="mb-0.5 inline-block rounded-full bg-amber-200/80 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                        Not confirmed
+                      </span>
+                    )}
                     <p className="truncate font-medium">
                       {isSettlement
                         ? `${payer?.name ?? 'Someone'} paid ${receiver ?? 'someone'}`
@@ -83,6 +102,9 @@ export function ExpenseList({
                       <span>{formatWhen(expense)}</span>
                       {!isSettlement && <span>· {payer?.name ?? 'Someone'} paid</span>}
                       {parts && <span>· {parts.length} transfers</span>}
+                      {thread.length > 0 && (
+                        <span aria-label={`${thread.length} comments`}>· 💬 {thread.length}</span>
+                      )}
                       {expense.note && <span aria-label="has a note">· 📝</span>}
                       {expense.location && <span aria-label="has a location">· 📍</span>}
                       {receipt === 'uploaded' && <span aria-label="has a receipt">· 🧾</span>}
@@ -115,6 +137,15 @@ export function ExpenseList({
                 </summary>
 
                 <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 px-3 py-3 pl-15">
+                  {unsure && (
+                    <UnconfirmedNotice
+                      groupId={groupId}
+                      expenseId={expense.id}
+                      canConfirm={canConfirm}
+                      payerName={payer?.name ?? 'someone'}
+                    />
+                  )}
+
                   {expense.note && (
                     <p className="text-sm whitespace-pre-wrap text-slate-600">{expense.note}</p>
                   )}
@@ -157,6 +188,16 @@ export function ExpenseList({
                       ))}
                     </ul>
                   )}
+
+                  <CommentThread
+                    groupId={groupId}
+                    expenseId={expense.id}
+                    comments={thread}
+                    members={members}
+                    uid={uid}
+                    isCreator={groupCreatedBy === uid}
+                    groupActive={groupActive}
+                  />
 
                   <div className="flex items-center gap-4 text-xs">
                     {canEdit && (

@@ -4,10 +4,12 @@ import type { Member, WithId } from '@app/shared';
 import { formatDate, formatDateTimeOf, formatPaise, formatTime, usableParts } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
-import { useExpense, useExpenseHistory } from '../../hooks/useExpenses.js';
+import { useComments, useExpense, useExpenseHistory } from '../../hooks/useExpenses.js';
 import { expensePermissions, updateExpense } from './api.js';
 import { ExpenseForm } from './ExpenseForm.js';
 import { ReceiptSection } from '../receipt/ReceiptSection.js';
+import { CommentThread } from './CommentThread.js';
+import { UnconfirmedNotice } from './UnconfirmedNotice.js';
 import { AppShell } from '../../components/Layout.js';
 import { Card, ErrorNote, FullPageSpinner } from '../../components/ui.js';
 
@@ -18,6 +20,7 @@ export function EditExpensePage() {
   const { group, loading: groupLoading } = useGroup(groupId);
   const { members, byId, loading: membersLoading } = useMembers(groupId);
   const { expense, loading: expenseLoading } = useExpense(groupId, expenseId);
+  const commentsByExpense = useComments(groupId);
 
   if (groupLoading || membersLoading || expenseLoading) return <FullPageSpinner />;
   if (!group || !groupId || !expenseId || !user) return null;
@@ -33,13 +36,29 @@ export function EditExpensePage() {
   }
 
   const myMemberId = members.find((m) => m.uid === user.uid)?.id ?? null;
-  const { canEdit, canManageReceipt } = expensePermissions({
+  const { canEdit, canManageReceipt, canConfirm } = expensePermissions({
     expense,
     payerUid: byId[expense.paidBy]?.uid,
     uid: user.uid,
     groupCreatedBy: group.createdBy,
     groupActive: group.status === 'active',
   });
+
+
+  const discussion = (
+    <Card className="space-y-3">
+      <p className="font-semibold">Comments</p>
+      <CommentThread
+        groupId={groupId}
+        expenseId={expenseId}
+        comments={commentsByExpense[expenseId] ?? []}
+        members={members}
+        uid={user.uid}
+        isCreator={group.createdBy === user.uid}
+        groupActive={group.status === 'active'}
+      />
+    </Card>
+  );
 
   if (!canEdit) {
     return (
@@ -49,6 +68,15 @@ export function EditExpensePage() {
             ? `Only ${byId[expense.paidBy]?.name ?? 'the person who paid'} can edit this. Ask them to fix it.`
             : 'This group is closed, so it is read-only.'}
         </ErrorNote>
+        {expense.unconfirmed && (
+          <UnconfirmedNotice
+            groupId={groupId}
+            expenseId={expenseId}
+            canConfirm={canConfirm}
+            payerName={byId[expense.paidBy]?.name ?? 'someone'}
+          />
+        )}
+        {discussion}
         <ReceiptSection groupId={groupId} expense={expense} canManage={canManageReceipt} />
         <ExpenseHistory groupId={groupId} expenseId={expenseId} membersById={byId} />
       </AppShell>
@@ -77,6 +105,7 @@ export function EditExpensePage() {
           splitType: expense.splitType,
           splitValue: Object.fromEntries(expense.splits.map((s) => [s.memberId, s.input])),
           parts: usableParts(expense),
+          unconfirmed: expense.unconfirmed === true,
         }}
         onSubmit={async (values) => {
           await updateExpense({
@@ -94,6 +123,7 @@ export function EditExpensePage() {
               ...(isSettlement
                 ? { parts: values.parts }
                 : {
+                    unconfirmed: values.unconfirmed,
                     paidBy: values.paidBy,
                     splitType: values.splitType,
                     splitInputs: values.splitInputs,
@@ -104,6 +134,7 @@ export function EditExpensePage() {
         }}
       />
 
+      {discussion}
       {!isSettlement && <ReceiptSection groupId={groupId} expense={expense} canManage={canManageReceipt} />}
       <ExpenseHistory groupId={groupId} expenseId={expenseId} membersById={byId} />
     </AppShell>
@@ -121,9 +152,11 @@ const FIELD_LABELS: Record<string, string> = {
   splitType: 'Split type',
   splits: 'Split',
   parts: 'Transfers',
+  unconfirmed: 'Status',
 };
 
 function describeValue(field: string, value: unknown, membersById: Record<string, WithId<Member<Timestamp>>>): string {
+  if (field === 'unconfirmed') return value === true ? 'not confirmed' : 'confirmed';
   // Before any other check: a null breakdown reads "one amount", not "empty".
   if (field === 'parts') {
     const count = Array.isArray(value) ? value.length : 0;

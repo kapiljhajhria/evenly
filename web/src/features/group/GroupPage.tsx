@@ -1,7 +1,7 @@
 import { Link, useParams } from 'react-router';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
-import { useExpenses } from '../../hooks/useExpenses.js';
+import { useComments, useExpenses, useUnconfirmedExpenses } from '../../hooks/useExpenses.js';
 import { AppShell } from '../../components/Layout.js';
 import { Button, Card, ErrorNote, FullPageSpinner } from '../../components/ui.js';
 import { BalancePanel } from './BalancePanel.js';
@@ -16,6 +16,8 @@ export function GroupPage() {
   const { group, loading, error } = useGroup(groupId);
   const { members, byId } = useMembers(groupId);
   const { expenses, hasMore, loadMore, error: expensesError } = useExpenses(groupId);
+  const comments = useComments(groupId);
+  const unconfirmed = useUnconfirmedExpenses(groupId);
 
   if (loading) return <FullPageSpinner />;
   if (error || !group || !groupId) {
@@ -67,6 +69,29 @@ export function GroupPage() {
         </div>
       )}
 
+      {unconfirmed.length > 0 && (
+        <div className="space-y-1.5 rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-200">
+          <p className="text-sm font-semibold text-amber-900">
+            {unconfirmed.length === 1 ? '1 expense needs' : `${unconfirmed.length} expenses need`} confirming
+          </p>
+          <p className="text-xs text-amber-800">
+            They count in the balances above, but someone was not sure about them. Check and confirm or fix them.
+          </p>
+          <ul className="flex flex-wrap gap-1.5">
+            {unconfirmed.map((expense) => (
+              <li key={expense.id}>
+                <Link
+                  to={`/group/${groupId}/expense/${expense.id}`}
+                  className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-900 ring-1 ring-amber-300 hover:bg-amber-100"
+                >
+                  {expense.description}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <ErrorNote>{expensesError?.message}</ErrorNote>
 
       <ExpenseList
@@ -79,6 +104,7 @@ export function GroupPage() {
         groupActive={isActive}
         hasMore={hasMore}
         onLoadMore={loadMore}
+        comments={comments}
       />
 
       <Card className="space-y-3">
