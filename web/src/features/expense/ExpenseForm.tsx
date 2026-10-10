@@ -9,6 +9,7 @@ import {
   parseRupeesToPaise,
 } from '@app/shared';
 import { Button, ErrorNote, Field, Input } from '../../components/ui.js';
+import { DateField } from '../../components/DateField.js';
 import { SplitEditor } from './SplitEditor.js';
 import { LocationField } from './LocationField.js';
 import { useLocationCapture } from './useLocation.js';
@@ -167,7 +168,7 @@ export function ExpenseForm({
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Date">
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+          <DateField value={date} onChange={setDate} required />
         </Field>
         <Field label="Time">
           <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
