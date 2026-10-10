@@ -24,7 +24,7 @@ export function ExportButton({
   groupName: string;
   closed: boolean;
   balances: BalanceMap;
-  members: { id: string; name: string }[];
+  members: { id: string; name: string; uid?: string | null }[];
   label?: string;
   variant?: 'primary' | 'secondary';
   onExported?: (result: ExportResult) => void;

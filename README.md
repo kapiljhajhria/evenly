@@ -41,9 +41,9 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (186 tests, no emulator)
-npm run test:rules       # Firestore + Storage rules vs the emulators (145 tests)
-npm run test:integration # functions + real client modules (67 tests)
+npm test                 # pure logic in shared/ and web/ (188 tests, no emulator)
+npm run test:rules       # Firestore + Storage rules vs the emulators (148 tests)
+npm run test:integration # functions + real client modules (74 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
 ```
@@ -111,6 +111,14 @@ workspace-only version spec is unresolvable from the public registry.
   `expenseId`), so the list gets every thread from one listener and the
   expense doc never carries a counter. No edits; delete and re-post.
   `onExpenseWrite` deletes an expense's comments with it.
+- **Deletes are soft, and clients can never hard-delete.** Deleting goes
+  through `updateExpense` (`changes: { deleted: true }`, payer or group
+  creator), which sets `deletedAt`/`deletedBy` and writes history.
+  `onExpenseWrite` treats a soft-deleted expense as absent, so its delta
+  reverses exactly like a hard delete, and a restore re-applies it. Its
+  receipt and comments are kept. The list filters deleted entries out
+  client-side (old docs have no field, so no backfill); the Deleted page reads
+  them with `deletedAt != null`. Only `deleteGroup` really removes expenses.
 - **Fields added after launch are optional, always.** `note`, `time` and
   `location` on an expense are validated as "absent OR null OR valid". An
   update sends the whole document, so requiring any of them would have locked

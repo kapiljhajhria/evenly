@@ -550,13 +550,30 @@ describe('expenses: ownership', () => {
     );
   });
 
-  it('lets the group creator delete anyone expense as an escape hatch', async () => {
-    await assertSucceeds(deleteDoc(doc(as(ALICE), 'groups', GROUP_ID, 'expenses', 'paid-by-bob')));
+  it('blocks hard deletes even by the payer — deletes are soft, through updateExpense', async () => {
+    await assertFails(deleteDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob')));
   });
 
-  it('blocks a plain member from deleting an expense they neither paid nor recorded', async () => {
-    await seedExpense(env, 'alice-paid', { paidBy: SLOT_ALICE, createdBy: ALICE });
-    await assertFails(deleteDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'alice-paid')));
+  it('blocks hard deletes by the group creator too', async () => {
+    await assertFails(deleteDoc(doc(as(ALICE), 'groups', GROUP_ID, 'expenses', 'paid-by-bob')));
+  });
+
+  it('blocks soft-deleting by writing deletedAt directly', async () => {
+    await assertFails(
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), {
+        deletedAt: serverTimestamp(),
+        deletedBy: BOB,
+      }),
+    );
+  });
+
+  it.each([
+    ['deletedAt', { deletedAt: Timestamp.now() }],
+    ['deletedBy', { deletedBy: BOB }],
+  ])('blocks creating an expense that is already deleted (%s)', async (_label, overrides) => {
+    await assertFails(
+      setDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'pre-deleted'), expenseData({ createdBy: BOB, ...overrides })),
+    );
   });
 });
 

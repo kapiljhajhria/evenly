@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { limit, onSnapshot, orderBy, query, where, type Timestamp } from 'firebase/firestore';
 import type { Expense, ExpenseComment, ExpenseHistoryEntry, WithId } from '@app/shared';
+import { isDeleted } from '@app/shared';
 import { commentsCol, expenseDoc, expensesCol, historyCol } from '../lib/paths.js';
 
 export const PAGE_SIZE = 25;
@@ -140,7 +141,42 @@ export function useUnconfirmedExpenses(groupId: string | undefined): WithId<Expe
     }
     return onSnapshot(
       query(expensesCol(groupId), where('unconfirmed', '==', true)),
-      (snap) => setExpenses(snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Expense<Timestamp>) }))),
+      (snap) =>
+        setExpenses(
+          snap.docs
+            .map((doc) => ({ id: doc.id, ...(doc.data() as Expense<Timestamp>) }))
+            // A deleted guess no longer needs anyone to confirm it.
+            .filter((expense) => !isDeleted(expense)),
+        ),
+      () => setExpenses([]),
+    );
+  }, [groupId]);
+
+  return expenses;
+}
+
+/**
+ * Every soft-deleted expense in the group, most recently deleted first.
+ * `!= null` matches only documents that HAVE the field set, so the many
+ * expenses that were never deleted (and have no field at all) are skipped
+ * without any backfill.
+ */
+export function useDeletedExpenses(groupId: string | undefined): WithId<Expense<Timestamp>>[] {
+  const [expenses, setExpenses] = useState<WithId<Expense<Timestamp>>[]>([]);
+
+  useEffect(() => {
+    if (!groupId) {
+      setExpenses([]);
+      return;
+    }
+    return onSnapshot(
+      query(expensesCol(groupId), where('deletedAt', '!=', null)),
+      (snap) =>
+        setExpenses(
+          snap.docs
+            .map((doc) => ({ id: doc.id, ...(doc.data() as Expense<Timestamp>) }))
+            .sort((a, b) => (b.deletedAt?.toMillis() ?? 0) - (a.deletedAt?.toMillis() ?? 0)),
+        ),
       () => setExpenses([]),
     );
   }, [groupId]);

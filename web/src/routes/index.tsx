@@ -10,6 +10,7 @@ import { MembersPage } from '../features/group/MembersPage.js';
 import { AddExpensePage } from '../features/expense/AddExpensePage.js';
 import { EditExpensePage } from '../features/expense/EditExpensePage.js';
 import { SettleUpPage } from '../features/expense/SettleUpPage.js';
+import { DeletedPage } from '../features/expense/DeletedPage.js';
 import { SettingsPage } from '../features/settings/SettingsPage.js';
 
 const protect = (element: React.ReactNode) => <RequireAuth>{element}</RequireAuth>;
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
   { path: '/group/:id/members', element: protect(<MembersPage />) },
   { path: '/group/:id/add', element: protect(<AddExpensePage />) },
   { path: '/group/:id/settle', element: protect(<SettleUpPage />) },
+  { path: '/group/:id/deleted', element: protect(<DeletedPage />) },
   { path: '/group/:id/expense/:expenseId', element: protect(<EditExpensePage />) },
   { path: '*', element: <Navigate to="/" replace /> },
 ]);

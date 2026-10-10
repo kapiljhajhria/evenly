@@ -9,13 +9,18 @@ import { DEFAULT_DISPLAY_DATE_FORMAT, formatDate, formatDateTimeOf, formatPaise,
 
 export type ExportExpense = Pick<
   Expense<unknown>,
-  'type' | 'description' | 'note' | 'date' | 'time' | 'amountPaise' | 'paidBy' | 'splits' | 'receiptPath' | 'parts' | 'unconfirmed'
-> & { id: string };
+  'type' | 'description' | 'note' | 'date' | 'time' | 'amountPaise' | 'paidBy' | 'splits' | 'receiptPath' | 'parts' | 'unconfirmed' | 'deletedBy'
+> & {
+  id: string;
+  /** Set when soft-deleted. Millis, so the model stays free of Timestamp. */
+  deletedAtMs?: number | null;
+};
 
 export interface ExportInput {
   groupName: string;
   closed: boolean;
-  members: { id: string; name: string }[];
+  /** `uid` lets the export name who deleted an entry. */
+  members: { id: string; name: string; uid?: string | null }[];
   balances: BalanceMap;
   /**
    * Sorted here by date and time; entries that tie on both keep the order
@@ -47,6 +52,8 @@ export interface ExportModel {
   ledgerRows: [string, string, string, string, string][];
   /** Same order as the ledger. Appended at the end, one per page. */
   receipts: ExportReceipt[];
+  /** [date, description, amount, deleted by + when]. Not counted anywhere. */
+  deletedRows: [string, string, string, string][];
 }
 
 /**
@@ -83,7 +90,23 @@ export function buildExport(input: ExportInput): ExportModel {
   const dateFormat = input.dateFormat ?? DEFAULT_DISPLAY_DATE_FORMAT;
   const names = new Map(input.members.map((m) => [m.id, m.name]));
   const nameOf = (memberId: string): string => names.get(memberId) ?? 'Removed member';
-  const expenses = chronological(input.expenses);
+  const nameOfUid = (uid: string | null | undefined): string =>
+    input.members.find((m) => m.uid && m.uid === uid)?.name ?? 'Someone';
+  const isGone = (expense: ExportExpense) => Boolean(expense.deletedBy) || Boolean(expense.deletedAtMs);
+  const all = chronological(input.expenses);
+  // Deleted entries are out of every total and every receipt page; they are
+  // listed separately so the record still shows what was removed.
+  const expenses = all.filter((expense) => !isGone(expense));
+  const deletedRows: ExportModel['deletedRows'] = all.filter(isGone).map((expense) => [
+    pdfDate(expense.date, dateFormat),
+    expense.type === 'settlement'
+      ? `${nameOf(expense.paidBy)} paid ${nameOf(expense.splits[0]?.memberId ?? '')} (settlement)`
+      : expense.description,
+    pdfMoney(expense.amountPaise),
+    `${nameOfUid(expense.deletedBy)}${
+      expense.deletedAtMs ? `, ${formatDateTimeOf(new Date(expense.deletedAtMs), dateFormat)}` : ''
+    }`,
+  ]);
 
   const ledgerRows: ExportModel['ledgerRows'] = [];
   const receipts: ExportReceipt[] = [];
@@ -141,6 +164,7 @@ export function buildExport(input: ExportInput): ExportModel {
     transferRows,
     ledgerRows,
     receipts,
+    deletedRows,
   };
 }
 

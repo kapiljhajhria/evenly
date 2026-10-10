@@ -7,6 +7,7 @@ import {
   computeSplits,
   isValidLocation,
   isValidTime,
+  isDeleted,
   MAX_NOTE_LENGTH,
   normalizeParts,
   PartsError,
@@ -35,6 +36,8 @@ interface Changes {
   parts?: unknown;
   /** Mark as not confirmed (true) or confirmed (false). */
   unconfirmed?: boolean;
+  /** Soft delete (true) or restore (false). Must be sent on its own. */
+  deleted?: boolean;
 }
 
 /** Fields worth snapshotting into history when they change. */
@@ -65,6 +68,12 @@ function validate(changes: Changes): void {
   }
   if (changes.location !== undefined && changes.location !== null && !isValidLocation(changes.location)) {
     throw new HttpsError('invalid-argument', 'That location is not valid.');
+  }
+  if (changes.deleted !== undefined && typeof changes.deleted !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Deleted must be true or false.');
+  }
+  if (changes.deleted !== undefined && Object.keys(changes).some((key) => key !== 'deleted')) {
+    throw new HttpsError('invalid-argument', 'Delete or restore on its own, not alongside other changes.');
   }
   if (changes.unconfirmed !== undefined && typeof changes.unconfirmed !== 'boolean') {
     throw new HttpsError('invalid-argument', 'Confirmed must be true or false.');
@@ -126,6 +135,34 @@ export const updateExpense = onCall(async (request) => {
     const payerSnap = await tx.get(membersRef(groupId).doc(before.paidBy));
     const payerUid = (payerSnap.data() as Member<Timestamp> | undefined)?.uid ?? null;
     const owns = payerUid === uid || (payerUid === null && before.createdBy === uid);
+    const wasDeleted = isDeleted(before);
+
+    // Soft delete / restore. Same people who could hard-delete before: the
+    // payer, or the group creator as the escape hatch. Nothing is removed —
+    // the expense stays visible on the Deleted page, and onExpenseWrite
+    // takes it out of (or puts it back into) the balances.
+    if (changes.deleted !== undefined) {
+      if (!owns && group.createdBy !== uid) {
+        throw new HttpsError(
+          'permission-denied',
+          'Only the person who paid, or the group creator, can delete or restore this.',
+        );
+      }
+      if (changes.deleted === wasDeleted) return { changed: [] as string[] };
+      tx.set(eRef.collection('history').doc(), {
+        editedBy: uid,
+        editedAt: FieldValue.serverTimestamp(),
+        before: { deleted: wasDeleted },
+      });
+      tx.update(
+        eRef,
+        changes.deleted
+          ? { deletedAt: FieldValue.serverTimestamp(), deletedBy: uid, updatedAt: FieldValue.serverTimestamp() }
+          : { deletedAt: null, deletedBy: null, updatedAt: FieldValue.serverTimestamp() },
+      );
+      return { changed: ['deleted'] };
+    }
+
     // Confirming (or flagging) is the one change the recorder may also make:
     // they are usually the one who was unsure, and may be the first to find
     // out. Anything else, including fixing the payer, stays with the owner.
@@ -136,6 +173,9 @@ export const updateExpense = onCall(async (request) => {
         'permission-denied',
         'Only the person who paid can edit this. Ask them to fix it.',
       );
+    }
+    if (wasDeleted) {
+      throw new HttpsError('failed-precondition', 'This expense was deleted. Restore it before editing it.');
     }
 
     // Settlement breakdown. Rules only check its shape on create, so this is

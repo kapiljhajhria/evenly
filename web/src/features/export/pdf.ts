@@ -1,6 +1,6 @@
 import { getDocs, orderBy, query, type Timestamp } from 'firebase/firestore';
 import { getDownloadURL, ref } from 'firebase/storage';
-import type { BalanceMap, Expense, WithId } from '@app/shared';
+import type { BalanceMap, Expense } from '@app/shared';
 import { storage } from '../../lib/firebase.js';
 import { expensesCol } from '../../lib/paths.js';
 import { buildExport, exportFileName, pdfMoney, type ExportModel } from './model.js';
@@ -53,7 +53,7 @@ export async function exportGroupPdf(args: {
   groupName: string;
   closed: boolean;
   balances: BalanceMap;
-  members: { id: string; name: string }[];
+  members: { id: string; name: string; uid?: string | null }[];
   onProgress?: (progress: ExportProgress) => void;
 }): Promise<ExportResult> {
   const { onProgress } = args;
@@ -69,7 +69,10 @@ export async function exportGroupPdf(args: {
     import('jspdf-autotable'),
   ]);
   const expenses = snap.docs
-    .map((doc) => ({ id: doc.id, ...(doc.data() as Expense<Timestamp>) }) as WithId<Expense<Timestamp>>)
+    .map((doc) => {
+      const data = doc.data() as Expense<Timestamp>;
+      return { ...data, id: doc.id, deletedAtMs: data.deletedAt?.toMillis() ?? null };
+    })
     .reverse();
 
   const generatedAt = new Date();
@@ -291,6 +294,17 @@ function writeSummary(doc: Doc, autoTable: AutoTable, model: ExportModel, lastY:
       4: { cellWidth: 120 },
     },
   });
+
+  if (model.deletedRows.length > 0) {
+    autoTable(doc, {
+      ...TABLE_STYLE,
+      startY: lastY() + 16,
+      head: [['Deleted entries — not counted above', '', 'Amount', 'Deleted by']],
+      headStyles: { fillColor: [153, 27, 27], textColor: 255 },
+      body: model.deletedRows,
+      columnStyles: { 0: { cellWidth: 62 }, 2: { cellWidth: 70, halign: 'right' }, 3: { cellWidth: 120 } },
+    });
+  }
 }
 
 function addPageNumbers(doc: Doc, pageWidth: number, pageHeight: number): void {

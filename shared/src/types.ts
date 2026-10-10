@@ -142,6 +142,13 @@ export interface Expense<TS = TimestampLike> {
    * absent (every expense recorded before it existed) means confirmed.
    */
   unconfirmed?: boolean;
+  /**
+   * Soft delete. A deleted expense stays in the collection so everyone can
+   * see that it was deleted, by whom and when — but counts for nothing in
+   * balances. Restoring clears both. Absent on everything never deleted.
+   */
+  deletedAt?: TS | null;
+  deletedBy?: Uid | null;
   amountPaise: Paise;
   /** Exactly one payer. Multi-payer is deliberately not supported. */
   paidBy: MemberId;

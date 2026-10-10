@@ -1,19 +1,19 @@
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import type { Timestamp } from 'firebase/firestore';
-import type { Member, WithId } from '@app/shared';
-import { formatDate, formatDateTimeOf, formatPaise, formatTime, usableParts } from '@app/shared';
+import type { DateFormat, Member, WithId } from '@app/shared';
+import { formatDate, formatDateTimeOf, formatPaise, formatTime, isDeleted, usableParts } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useDisplayDateFormat } from '../../stores/preferences.js';
-import type { DateFormat } from '@app/shared';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { useComments, useExpense, useExpenseHistory } from '../../hooks/useExpenses.js';
-import { expensePermissions, updateExpense } from './api.js';
+import { expensePermissions, restoreExpense, updateExpense } from './api.js';
 import { ExpenseForm } from './ExpenseForm.js';
 import { ReceiptSection } from '../receipt/ReceiptSection.js';
 import { CommentThread } from './CommentThread.js';
 import { UnconfirmedNotice } from './UnconfirmedNotice.js';
 import { AppShell } from '../../components/Layout.js';
-import { Card, ErrorNote, FullPageSpinner } from '../../components/ui.js';
+import { Button, Card, ErrorNote, FullPageSpinner } from '../../components/ui.js';
 
 export function EditExpensePage() {
   const { id: groupId, expenseId } = useParams<{ id: string; expenseId: string }>();
@@ -22,6 +22,7 @@ export function EditExpensePage() {
   const { group, loading: groupLoading } = useGroup(groupId);
   const { members, byId, loading: membersLoading } = useMembers(groupId);
   const { expense, loading: expenseLoading } = useExpense(groupId, expenseId);
+  const dateFormat = useDisplayDateFormat();
   const commentsByExpense = useComments(groupId);
 
   if (groupLoading || membersLoading || expenseLoading) return <FullPageSpinner />;
@@ -38,7 +39,7 @@ export function EditExpensePage() {
   }
 
   const myMemberId = members.find((m) => m.uid === user.uid)?.id ?? null;
-  const { canEdit, canManageReceipt, canConfirm } = expensePermissions({
+  const { canEdit, canManageReceipt, canConfirm, canRestore } = expensePermissions({
     expense,
     payerUid: byId[expense.paidBy]?.uid,
     uid: user.uid,
@@ -62,6 +63,25 @@ export function EditExpensePage() {
     </Card>
   );
 
+  if (isDeleted(expense)) {
+    const deleter =
+      expense.deletedBy === user.uid ? 'you' : (members.find((m) => m.uid === expense.deletedBy)?.name ?? 'someone');
+    return (
+      <AppShell title="Deleted entry" back={back}>
+        <DeletedNotice
+          groupId={groupId}
+          expenseId={expenseId}
+          deleter={deleter}
+          deletedAt={expense.deletedAt ? formatDateTimeOf(expense.deletedAt.toDate(), dateFormat) : null}
+          canRestore={canRestore}
+          summary={`${expense.description} · ${formatPaise(expense.amountPaise)} · ${byId[expense.paidBy]?.name ?? 'Someone'} paid`}
+        />
+        {discussion}
+        <ExpenseHistory groupId={groupId} expenseId={expenseId} membersById={byId} />
+      </AppShell>
+    );
+  }
+
   if (!canEdit) {
     return (
       <AppShell title="Edit" back={back}>
@@ -75,7 +95,8 @@ export function EditExpensePage() {
             groupId={groupId}
             expenseId={expenseId}
             canConfirm={canConfirm}
-            payerName={byId[expense.paidBy]?.name ?? 'someone'}
+            recorderName={members.find((m) => m.uid === expense.createdBy)?.name ?? 'whoever added it'}
+            recordedByMe={expense.createdBy === user.uid}
           />
         )}
         {discussion}
@@ -212,16 +233,71 @@ function ExpenseHistory({
               </span>
             </p>
             <ul className="mt-1 space-y-0.5 text-xs text-slate-500">
-              {Object.entries(entry.before as Record<string, unknown>).map(([field, value]) => (
+              {'deleted' in (entry.before as Record<string, unknown>) ? (
+                // A delete or restore is its own entry: say it plainly.
+                <li className={(entry.before as { deleted?: boolean }).deleted ? 'text-emerald-700' : 'text-red-700'}>
+                  {(entry.before as { deleted?: boolean }).deleted ? 'Restored this entry' : 'Deleted this entry'}
+                </li>
+              ) : (
+                Object.entries(entry.before as Record<string, unknown>).map(([field, value]) => (
                 <li key={field}>
                   {FIELD_LABELS[field] ?? field} was{' '}
                   <span className="text-slate-700">{describeValue(field, value, membersById, dateFormat)}</span>
                 </li>
-              ))}
+                ))
+              )}
             </ul>
           </li>
         ))}
       </ul>
     </Card>
+  );
+}
+
+function DeletedNotice({
+  groupId,
+  expenseId,
+  deleter,
+  deletedAt,
+  canRestore,
+  summary,
+}: {
+  groupId: string;
+  expenseId: string;
+  deleter: string;
+  deletedAt: string | null;
+  canRestore: boolean;
+  summary: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="space-y-2 rounded-2xl bg-red-50 p-4 text-sm text-red-900 ring-1 ring-red-100">
+      <p className="font-semibold line-through decoration-red-300">{summary}</p>
+      <p>
+        Deleted by {deleter}
+        {deletedAt && ` on ${deletedAt}`}. It no longer counts in anyone's balance.
+      </p>
+      {canRestore && (
+        <Button
+          type="button"
+          variant="secondary"
+          busy={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              await restoreExpense(groupId, expenseId);
+            } catch (err) {
+              setError((err as Error).message);
+              setBusy(false);
+            }
+          }}
+        >
+          Restore it
+        </Button>
+      )}
+      {error && <p className="text-xs text-red-700">{error}</p>}
+    </div>
   );
 }

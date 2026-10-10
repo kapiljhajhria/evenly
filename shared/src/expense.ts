@@ -182,3 +182,7 @@ export function localTimeString(at: Date = new Date()): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
   return `${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
+
+/** Soft-deleted: still stored and visible on the Deleted page, out of balances. */
+export const isDeleted = (expense: { deletedAt?: unknown }): boolean =>
+  expense.deletedAt !== undefined && expense.deletedAt !== null;

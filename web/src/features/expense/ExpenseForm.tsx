@@ -225,10 +225,12 @@ export function ExpenseForm({
             className="mt-0.5 size-4 accent-amber-600"
           />
           <span className="text-sm">
-            <span className="block font-medium text-slate-800">Not sure about this — mark as not confirmed</span>
+            <span className="block font-medium text-slate-800">
+              Not sure who paid or how it is split — mark as not confirmed
+            </span>
             <span className="block text-xs text-slate-500">
-              It still counts in balances, but shows in orange until someone confirms it. Say what is unclear in
-              Notes, e.g. who paid.
+              It still counts in balances, but shows in orange until someone confirms it. Others can comment on it, so
+              you can fix it later. Say what is unclear in Notes.
             </span>
           </span>
         </label>

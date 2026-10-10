@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { deleteApp, initializeApp, type App } from 'firebase-admin/app';
 import { FieldValue, getFirestore, Timestamp, type Firestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import { computeSplits, settlementSplits } from '@app/shared';
 
 const PROJECT_ID = 'demo-expense-splitter';
@@ -433,6 +434,93 @@ describe('updateExpense', () => {
       const call = await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { description: 'Brunch' } });
       expect(call.ok, call.message).toBe(true);
       expect((await readExpense(id))['unconfirmed']).toBe(true);
+    });
+  });
+
+  describe('soft delete', () => {
+    const del = (user: EmulatorUser, id: string, deleted = true) =>
+      callFunction('updateExpense', user, { groupId, expenseId: id, changes: { deleted } });
+
+    it('takes the expense out of balances but keeps it, with who and when', async () => {
+      const id = await seedLegacyExpense();
+      await waitForBalance(PAYER, 30000);
+
+      const call = await del(payer, id);
+      expect(call.ok, call.message).toBe(true);
+      expect(call.result?.['changed']).toEqual(['deleted']);
+      await waitForBalance(PAYER, 0);
+
+      const stored = await readExpense(id);
+      expect(stored['deletedBy']).toBe(payer.uid);
+      expect(stored['deletedAt']).toBeInstanceOf(Timestamp);
+      expect(stored['amountPaise']).toBe(60000);
+      const [entry] = await readHistory(id);
+      expect(entry).toMatchObject({ editedBy: payer.uid, before: { deleted: false } });
+    });
+
+    it('puts it back into balances on restore', async () => {
+      const id = await seedLegacyExpense();
+      await waitForBalance(PAYER, 30000);
+      expect((await del(payer, id)).ok).toBe(true);
+      await waitForBalance(PAYER, 0);
+
+      const restore = await del(payer, id, false);
+      expect(restore.ok, restore.message).toBe(true);
+      await waitForBalance(PAYER, 30000);
+      const stored = await readExpense(id);
+      expect(stored['deletedAt']).toBeNull();
+      expect(stored['deletedBy']).toBeNull();
+      expect((await readHistory(id)).map((h) => h['before'])).toEqual(
+        expect.arrayContaining([{ deleted: false }, { deleted: true }]),
+      );
+    });
+
+    it('lets the group creator delete someone else\'s expense', async () => {
+      const id = await seedLegacyExpense(PAYER, payer.uid);
+      const call = await del(creator, id);
+      expect(call.ok, call.message).toBe(true);
+      expect((await readExpense(id))['deletedBy']).toBe(creator.uid);
+    });
+
+    it('refuses a member who neither paid nor created the group', async () => {
+      const id = await seedLegacyExpense(OWNER, creator.uid);
+      const call = await del(payer, id);
+      expect(call.ok).toBe(false);
+      expect(call.status).toBe('PERMISSION_DENIED');
+    });
+
+    it('refuses edits to a deleted expense until it is restored', async () => {
+      const id = await seedLegacyExpense();
+      expect((await del(payer, id)).ok).toBe(true);
+      const edit = await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { description: 'x' } });
+      expect(edit.ok).toBe(false);
+      expect(edit.status).toBe('FAILED_PRECONDITION');
+    });
+
+    it('refuses deleting alongside other changes', async () => {
+      const id = await seedLegacyExpense();
+      const call = await callFunction('updateExpense', payer, {
+        groupId, expenseId: id, changes: { deleted: true, description: 'x' },
+      });
+      expect(call.ok).toBe(false);
+      expect(call.status).toBe('INVALID_ARGUMENT');
+    });
+
+    it('keeps the receipt file, so a restore brings it back', async () => {
+      process.env['FIREBASE_STORAGE_EMULATOR_HOST'] ??= '127.0.0.1:9199';
+      const bucket = getStorage(app).bucket(`${PROJECT_ID}.appspot.com`);
+      const id = await seedLegacyExpense();
+      const path = `receipts/${groupId}/${id}.webp`;
+      await bucket.file(path).save(Buffer.from('fake-webp'), { contentType: 'image/webp' });
+      await expensesRef().doc(id).update({ receiptStatus: 'uploaded', receiptPath: path });
+      await waitForBalance(PAYER, 30000);
+
+      expect((await del(payer, id)).ok).toBe(true);
+      await waitForBalance(PAYER, 0);
+      // Give the trigger's cleanup step time to (wrongly) run.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const [exists] = await bucket.file(path).exists();
+      expect(exists).toBe(true);
     });
   });
 });

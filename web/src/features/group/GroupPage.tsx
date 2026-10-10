@@ -1,7 +1,8 @@
 import { Link, useParams } from 'react-router';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
-import { useComments, useExpenses, useUnconfirmedExpenses } from '../../hooks/useExpenses.js';
+import { useComments, useDeletedExpenses, useExpenses, useUnconfirmedExpenses } from '../../hooks/useExpenses.js';
+import { isDeleted } from '@app/shared';
 import { AppShell } from '../../components/Layout.js';
 import { Button, Card, ErrorNote, FullPageSpinner } from '../../components/ui.js';
 import { BalancePanel } from './BalancePanel.js';
@@ -18,6 +19,7 @@ export function GroupPage() {
   const { expenses, hasMore, loadMore, error: expensesError } = useExpenses(groupId);
   const comments = useComments(groupId);
   const unconfirmed = useUnconfirmedExpenses(groupId);
+  const deleted = useDeletedExpenses(groupId);
 
   if (loading) return <FullPageSpinner />;
   if (error || !group || !groupId) {
@@ -32,7 +34,7 @@ export function GroupPage() {
   const isCreator = group.createdBy === user?.uid;
   const isActive = group.status === 'active';
   const openSlots = members.filter((m) => m.uid === null).length;
-  const exportMembers = members.map((m) => ({ id: m.id, name: m.name }));
+  const exportMembers = members.map((m) => ({ id: m.id, name: m.name, uid: m.uid }));
 
   return (
     <AppShell
@@ -75,7 +77,8 @@ export function GroupPage() {
             {unconfirmed.length === 1 ? '1 expense needs' : `${unconfirmed.length} expenses need`} confirming
           </p>
           <p className="text-xs text-amber-800">
-            They count in the balances above, but someone was not sure about them. Check and confirm or fix them.
+            They count in the balances above, but who paid or how they were split may be wrong. If you know, confirm
+            them, or comment so whoever added them can fix it.
           </p>
           <ul className="flex flex-wrap gap-1.5">
             {unconfirmed.map((expense) => (
@@ -94,9 +97,26 @@ export function GroupPage() {
 
       <ErrorNote>{expensesError?.message}</ErrorNote>
 
+      {deleted.length > 0 && (
+        <Link
+          to={`/group/${groupId}/deleted`}
+          className="flex items-center gap-2 rounded-2xl bg-red-50 px-3 py-2.5 text-sm text-red-800 ring-1 ring-red-100 hover:bg-red-100"
+        >
+          <svg viewBox="0 0 24 24" className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="flex-1">
+            {deleted.length === 1 ? '1 entry was deleted' : `${deleted.length} entries were deleted`} — see what,
+            and by whom
+          </span>
+          <span aria-hidden>›</span>
+        </Link>
+      )}
+
       <ExpenseList
         groupId={groupId}
-        expenses={expenses}
+        // Deleted entries live on the Deleted page, not in the running list.
+        expenses={expenses.filter((expense) => !isDeleted(expense))}
         membersById={byId}
         myMemberId={myMemberId}
         uid={user?.uid}

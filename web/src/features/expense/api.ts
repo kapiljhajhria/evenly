@@ -3,7 +3,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase.js';
 import type { Expense, ExpenseLocation, ExpenseType, SettlementPart, SplitType } from '@app/shared';
 import { assertSplitsValid, computeSplits, normalizeParts, partsTotal, settlementSplits } from '@app/shared';
-import { commentDoc, commentsCol, expenseDoc, expensesCol } from '../../lib/paths.js';
+import { commentDoc, commentsCol, expensesCol } from '../../lib/paths.js';
 
 export interface NewExpenseInput {
   groupId: string;
@@ -108,6 +108,8 @@ export interface UpdateExpenseChanges {
   parts?: SettlementPart[] | null;
   /** The recorder may send this alone; anything else needs the owner. */
   unconfirmed?: boolean;
+  /** Soft delete / restore — on its own. Payer or group creator. */
+  deleted?: boolean;
 }
 
 /**
@@ -122,8 +124,18 @@ export const updateExpense = httpsCallable<
   { changed: string[] }
 >(functions, 'updateExpense');
 
+/**
+ * Soft delete: the expense leaves the balances and the main list but stays
+ * stored, shown on the Deleted page with who deleted it and when, and can be
+ * restored. Through updateExpense so it lands in the edit history; rules
+ * refuse a hard delete from any client.
+ */
 export async function deleteExpense(groupId: string, expenseId: string): Promise<void> {
-  await deleteDoc(expenseDoc(groupId, expenseId));
+  await updateExpense({ groupId, expenseId, changes: { deleted: true } });
+}
+
+export async function restoreExpense(groupId: string, expenseId: string): Promise<void> {
+  await updateExpense({ groupId, expenseId, changes: { deleted: false } });
 }
 
 /**
@@ -136,9 +148,11 @@ export function expensePermissions(args: {
   uid: string | undefined;
   groupCreatedBy: string;
   groupActive: boolean;
-}): { canEdit: boolean; canDelete: boolean; canManageReceipt: boolean; canConfirm: boolean } {
+}): { canEdit: boolean; canDelete: boolean; canManageReceipt: boolean; canConfirm: boolean; canRestore: boolean } {
   const { expense, payerUid, uid, groupCreatedBy, groupActive } = args;
-  if (!groupActive || !uid) return { canEdit: false, canDelete: false, canManageReceipt: false, canConfirm: false };
+  if (!groupActive || !uid) {
+    return { canEdit: false, canDelete: false, canManageReceipt: false, canConfirm: false, canRestore: false };
+  }
   const owns = payerUid === uid || ((payerUid ?? null) === null && expense.createdBy === uid);
   return {
     canEdit: owns,
@@ -148,6 +162,8 @@ export function expensePermissions(args: {
     canManageReceipt: expense.type !== 'settlement' && (owns || expense.createdBy === uid),
     // Mirrors updateExpense: the payer, or whoever recorded it.
     canConfirm: owns || expense.createdBy === uid,
+    // Restore mirrors delete: the payer, or the group creator.
+    canRestore: owns || groupCreatedBy === uid,
   };
 }
 

@@ -78,6 +78,35 @@ describe('buildExport', () => {
     expect(model.subtitle).toBe('Active group · exported 10 Oct 2026, 9:05 am');
   });
 
+  it('leaves deleted entries out of the ledger, totals and receipts, and lists them separately', () => {
+    const model = buildExport(
+      input({
+        members: [
+          { id: 'm-a', name: 'Asha', uid: 'u-a' },
+          { id: 'm-b', name: 'Bilal', uid: 'u-b' },
+        ],
+        expenses: [
+          expense({ id: 'kept', description: 'Dinner' }),
+          expense({
+            id: 'gone',
+            description: 'Duplicate dinner',
+            receiptPath: 'receipts/g/gone.webp',
+            deletedBy: 'u-b',
+            deletedAtMs: new Date(2026, 7, 23, 10, 0).getTime(),
+          }),
+        ],
+      }),
+    );
+    expect(model.ledgerRows.map((row) => row[1])).toEqual(['Dinner']);
+    expect(model.totals).toMatchObject({ spentPaise: 30001, expenseCount: 1 });
+    expect(model.receipts).toEqual([]);
+    expect(model.deletedRows).toEqual([['22-aug-26', 'Duplicate dinner', 'Rs 300.01', 'Bilal, 23-aug-26, 10:00 am']]);
+  });
+
+  it('has no deleted section when nothing was deleted', () => {
+    expect(buildExport(input()).deletedRows).toEqual([]);
+  });
+
   it('puts the note under the description', () => {
     const [row] = buildExport(input({ expenses: [expense({ note: 'Tip separate' })] })).ledgerRows;
     expect(row![1]).toBe('Dinner\nTip separate');

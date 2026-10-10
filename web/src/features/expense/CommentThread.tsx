@@ -5,6 +5,7 @@ import { formatDateTimeOf, MAX_COMMENT_LENGTH } from '@app/shared';
 import { Avatar, Button } from '../../components/ui.js';
 import { addComment, deleteComment } from './api.js';
 import { useDisplayDateFormat } from '../../stores/preferences.js';
+import { commentBoxId } from './UnconfirmedNotice.js';
 
 /**
  * Discussion on one expense — "I think Bilal paid this?" Any member can post;
@@ -89,6 +90,7 @@ export function CommentThread({
       {groupActive && uid && (
         <form onSubmit={post} className="flex items-end gap-2">
           <textarea
+            id={commentBoxId(expenseId)}
             value={text}
             onChange={(e) => setText(e.target.value)}
             maxLength={MAX_COMMENT_LENGTH}

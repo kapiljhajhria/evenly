@@ -2,7 +2,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import type { BalanceMap, Expense, Group } from '@app/shared';
-import { applyDelta, isSettledUp, splitsAreValid, writeDelta } from '@app/shared';
+import { applyDelta, isDeleted, isSettledUp, splitsAreValid, writeDelta } from '@app/shared';
 import { bucket, db, groupRef } from './common.js';
 
 /** Idempotency markers live long enough to cover a retry storm, then TTL away. */
@@ -12,6 +12,9 @@ type StoredExpense = Expense<Timestamp>;
 
 function balanceRelevant(expense: StoredExpense | undefined): StoredExpense | null {
   if (!expense) return null;
+  // Soft-deleted expenses still exist but count for nothing: deleting one
+  // reverses its delta exactly like a hard delete, and restoring re-applies it.
+  if (isDeleted(expense)) return null;
   if (!splitsAreValid(expense.amountPaise, expense.splits)) {
     // Rules enforce this on write; if something slips through, refuse to let a
     // broken doc corrupt the materialized balances.
@@ -38,8 +41,10 @@ export const onExpenseWrite = onDocumentWritten('groups/{groupId}/expenses/{expe
   if (event.data?.before.exists && !event.data.after.exists) {
     await deleteComments(groupId, expenseId);
   }
-  const before = balanceRelevant(event.data?.before.data() as StoredExpense | undefined);
-  const after = balanceRelevant(event.data?.after.data() as StoredExpense | undefined);
+  const rawBefore = event.data?.before.data() as StoredExpense | undefined;
+  const rawAfter = event.data?.after.data() as StoredExpense | undefined;
+  const before = balanceRelevant(rawBefore);
+  const after = balanceRelevant(rawAfter);
 
   if (!before && !after) return;
 
@@ -80,9 +85,11 @@ export const onExpenseWrite = onDocumentWritten('groups/{groupId}/expenses/{expe
     return;
   }
 
-  // Folded-in receipt cleanup: deleting an expense deletes its receipt.
-  const removedPath = before?.receiptPath;
-  if (removedPath && removedPath !== after?.receiptPath) {
+  // Folded-in receipt cleanup: removing or replacing a receipt deletes the old
+  // file. Compared on the RAW docs — a soft delete makes `after` null for
+  // balances, but the expense and its receipt still exist and can be restored.
+  const removedPath = rawBefore?.receiptPath;
+  if (removedPath && removedPath !== (rawAfter?.receiptPath ?? null)) {
     try {
       await bucket().file(removedPath).delete({ ignoreNotFound: true });
     } catch (error) {

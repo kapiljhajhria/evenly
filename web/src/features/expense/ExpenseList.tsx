@@ -146,7 +146,8 @@ export function ExpenseList({
                       groupId={groupId}
                       expenseId={expense.id}
                       canConfirm={canConfirm}
-                      payerName={payer?.name ?? 'someone'}
+                      recorderName={members.find((m) => m.uid === expense.createdBy)?.name ?? 'whoever added it'}
+                      recordedByMe={expense.createdBy === uid}
                     />
                   )}
 
@@ -223,8 +224,12 @@ export function ExpenseList({
                         type="button"
                         className="text-slate-400 underline underline-offset-2 hover:text-red-600"
                         onClick={() => {
-                          if (confirm('Delete this entry? Balances update straight away.')) {
-                            void deleteExpense(groupId, expense.id);
+                          if (
+                            confirm(
+                              'Delete this entry? It comes out of the balances straight away. Everyone can still see it, and who deleted it, under Deleted — and it can be restored.',
+                            )
+                          ) {
+                            deleteExpense(groupId, expense.id).catch((error: Error) => alert(error.message));
                           }
                         }}
                       >

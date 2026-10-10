@@ -229,6 +229,10 @@ service cloud.firestore {
           // "Not sure who paid — please check". Optional like every
           // post-launch field: absent means confirmed.
           && request.resource.data.get('unconfirmed', false) is bool
+          // Deleting is a soft delete through updateExpense; nothing is
+          // created already deleted.
+          && request.resource.data.get('deletedAt', null) == null
+          && request.resource.data.get('deletedBy', null) == null
           && validTime()
           && validLocation()
           && request.resource.data.amountPaise is int
@@ -277,10 +281,11 @@ service cloud.firestore {
              .hasOnly(['receiptStatus', 'receiptPath', 'updatedAt'])
         && request.resource.data.receiptStatus in ['none', 'pending', 'uploaded', 'failed'];
 
-      // Group creator gets a delete-only escape hatch for cleanup.
-      allow delete: if isMember(groupId)
-        && isActive(groupId)
-        && (ownsExpense() || isCreator(groupId));
+      // No hard deletes from clients, ever. Deleting is a soft delete through
+      // updateExpense (payer, or the group creator), so a deleted expense
+      // stays visible to everyone — with who deleted it and when — and can
+      // be restored. Only deleteGroup, server-side, really removes expenses.
+      allow delete: if false;
 
       // ----------------------------------------------------------- history
 

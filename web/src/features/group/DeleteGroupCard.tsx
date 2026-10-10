@@ -23,7 +23,7 @@ export function DeleteGroupCard({
   groupName: string;
   closed: boolean;
   balances: BalanceMap;
-  members: { id: string; name: string }[];
+  members: { id: string; name: string; uid?: string | null }[];
 }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
