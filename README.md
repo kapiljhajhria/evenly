@@ -41,8 +41,8 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (188 tests, no emulator)
-npm run test:rules       # Firestore + Storage rules vs the emulators (148 tests)
+npm test                 # pure logic in shared/ and web/ (198 tests, no emulator)
+npm run test:rules       # Firestore + Storage rules vs the emulators (153 tests)
 npm run test:integration # functions + real client modules (74 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
@@ -119,6 +119,12 @@ workspace-only version spec is unresolvable from the public registry.
   receipt and comments are kept. The list filters deleted entries out
   client-side (old docs have no field, so no backfill); the Deleted page reads
   them with `deletedAt != null`. Only `deleteGroup` really removes expenses.
+- **"What's new" is computed on the client.** `users/{uid}/seen/{groupId}`
+  (private, server-timestamped) records each person's last visit; three small
+  range queries (`createdAt` / comment `createdAt` / `deletedAt` > last visit)
+  feed `features/activity/activity.ts`. Your own actions never count. The
+  group page captures the previous visit before marking it seen — a
+  mark-seen that runs first (React's dev double-mount) would hide everything.
 - **Fields added after launch are optional, always.** `note`, `time` and
   `location` on an expense are validated as "absent OR null OR valid". An
   update sends the whole document, so requiring any of them would have locked

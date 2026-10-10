@@ -12,6 +12,8 @@ export const expenseDoc = (groupId: string, expenseId: string) =>
 export const historyCol = (groupId: string, expenseId: string) =>
   collection(db, 'groups', groupId, 'expenses', expenseId, 'history');
 export const userDoc = (uid: string) => doc(db, 'users', uid);
+/** When this user last looked at a group. Private to them. */
+export const seenDoc = (uid: string, groupId: string) => doc(db, 'users', uid, 'seen', groupId);
 /** Flat per group, keyed by expenseId — see the comments rule in firestore.rules. */
 export const commentsCol = (groupId: string) => collection(db, 'groups', groupId, 'comments');
 export const commentDoc = (groupId: string, commentId: string) =>

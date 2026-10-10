@@ -60,6 +60,18 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // When you last looked at each group, for "what's new since your last
+    // visit". Private — unlike the profile above, which group-mates may read —
+    // and server-timestamped, so a device clock cannot push it into the future
+    // and hide activity.
+    match /users/{userId}/seen/{groupId} {
+      allow read: if isSignedIn() && uid() == userId;
+      allow create, update: if isSignedIn() && uid() == userId
+        && request.resource.data.keys().hasOnly(['at'])
+        && request.resource.data.at == request.time;
+      allow delete: if false;
+    }
+
     // ------------------------------------------- cross-group memberships
 
     // The home page finds every group you belong to with ONE collectionGroup

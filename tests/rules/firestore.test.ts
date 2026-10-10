@@ -708,6 +708,32 @@ describe('comments', () => {
   });
 });
 
+describe('last-seen markers', () => {
+  const seen = (uid: string, owner = uid) => doc(as(uid), 'users', owner, 'seen', GROUP_ID);
+
+  it('lets you record and read when you last looked at a group', async () => {
+    await assertSucceeds(setDoc(seen(BOB), { at: serverTimestamp() }));
+    await assertSucceeds(getDoc(seen(BOB)));
+  });
+
+  it('keeps it private from other members', async () => {
+    await assertSucceeds(setDoc(seen(BOB), { at: serverTimestamp() }));
+    await assertFails(getDoc(seen(ALICE, BOB)));
+  });
+
+  it('blocks writing someone else\'s', async () => {
+    await assertFails(setDoc(seen(ALICE, BOB), { at: serverTimestamp() }));
+  });
+
+  it('blocks a client-chosen time, so it cannot be pushed into the future', async () => {
+    await assertFails(setDoc(seen(BOB), { at: Timestamp.fromMillis(Date.now() + 86_400_000) }));
+  });
+
+  it('blocks extra fields', async () => {
+    await assertFails(setDoc(seen(BOB), { at: serverTimestamp(), note: 'x' }));
+  });
+});
+
 describe('history and internals', () => {
   beforeEach(async () => {
     await seedExpense(env, 'e-hist', { paidBy: SLOT_BOB, createdBy: BOB });

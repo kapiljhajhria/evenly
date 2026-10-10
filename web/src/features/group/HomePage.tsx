@@ -1,13 +1,27 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { netFor } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useMyGroups } from '../../hooks/useMyGroups.js';
 import { AppShell } from '../../components/Layout.js';
 import { Avatar, Button, Card, EmptyState, ErrorNote, Money, Spinner } from '../../components/ui.js';
+import { NewActivityPill } from '../activity/WhatsNew.js';
+import { setAppBadge } from '../activity/badge.js';
 
 export function HomePage() {
   const { user, displayName, photoURL } = useAuth();
   const { groups, loading, error } = useMyGroups(user?.uid);
+
+  // Each group's pill reports its count; the total goes on the app icon
+  // (installed app, where the platform supports badges — iOS 16.4+ included).
+  const [newCounts, setNewCounts] = useState<Record<string, number>>({});
+  const onCount = useCallback(
+    (groupId: string, count: number) =>
+      setNewCounts((current) => (current[groupId] === count ? current : { ...current, [groupId]: count })),
+    [],
+  );
+  const totalNew = groups.reduce((sum, { group }) => sum + (newCounts[group.id] ?? 0), 0);
+  useEffect(() => setAppBadge(totalNew), [totalNew]);
 
   return (
     <AppShell
@@ -54,7 +68,12 @@ export function HomePage() {
                 <Link to={`/group/${group.id}`} className="block">
                   <Card className="flex items-center gap-3 transition hover:ring-brand-500">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{group.name}</p>
+                      <p className="flex items-center gap-2">
+                        <span className="truncate font-semibold">{group.name}</span>
+                        {user && (
+                          <NewActivityPill groupId={group.id} uid={user.uid} myMemberId={memberId} onCount={onCount} />
+                        )}
+                      </p>
                       <p className="text-sm text-slate-500">
                         {group.status === 'closed'
                           ? 'Closed'

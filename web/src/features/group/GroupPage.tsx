@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
@@ -10,6 +11,9 @@ import { EditableGroupName } from './EditableGroupName.js';
 import { ExpenseList } from '../expense/ExpenseList.js';
 import { ExportButton } from '../export/ExportButton.js';
 import { DeleteGroupCard } from './DeleteGroupCard.js';
+import { buildActivity } from '../activity/activity.js';
+import { useActivitySince, useLastSeen } from '../activity/useActivity.js';
+import { WhatsNew } from '../activity/WhatsNew.js';
 
 export function GroupPage() {
   const { id: groupId } = useParams<{ id: string }>();
@@ -20,6 +24,39 @@ export function GroupPage() {
   const comments = useComments(groupId);
   const unconfirmed = useUnconfirmedExpenses(groupId);
   const deleted = useDeletedExpenses(groupId);
+
+  // "What's new": freeze the previous visit's time for this page view, then
+  // mark the group seen — on arrival, on leaving, and when the app is
+  // backgrounded — so the home page stops counting what you have looked at.
+  const { seenMs, markSeen } = useLastSeen(user?.uid, groupId);
+  const [since, setSince] = useState<{ groupId: string; ms: number } | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  // Which group's visit has actually begun (its previous time captured).
+  // Leaving only counts as "seen" after that: a cleanup that runs before it —
+  // React's dev double-mount, or a remount mid-load — would otherwise stamp
+  // "seen now" first and then read it back as the last visit, hiding
+  // everything new.
+  const visitRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (seenMs !== null && groupId && since?.groupId !== groupId) {
+      setSince({ groupId, ms: seenMs });
+      setDismissed(false);
+      visitRef.current = groupId;
+      markSeen();
+    }
+  }, [seenMs, groupId, since?.groupId, markSeen]);
+  useEffect(() => {
+    const leave = () => {
+      if (groupId && visitRef.current === groupId) markSeen();
+    };
+    const onHide = () => document.visibilityState === 'hidden' && leave();
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      leave();
+    };
+  }, [markSeen, groupId]);
+  const activitySince = useActivitySince(groupId, since && since.groupId === groupId ? since.ms : null);
 
   if (loading) return <FullPageSpinner />;
   if (error || !group || !groupId) {
@@ -35,6 +72,18 @@ export function GroupPage() {
   const isActive = group.status === 'active';
   const openSlots = members.filter((m) => m.uid === null).length;
   const exportMembers = members.map((m) => ({ id: m.id, name: m.name, uid: m.uid }));
+  const activity =
+    since && user
+      ? buildActivity({
+          ...activitySince,
+          known: expenses,
+          seenMs: since.ms,
+          uid: user.uid,
+          myMemberId,
+          nameOfUid: (uid) => members.find((m) => m.uid === uid)?.name ?? 'Someone',
+          nameOfMember: (id) => byId[id]?.name ?? 'someone',
+        })
+      : [];
 
   return (
     <AppShell
@@ -44,8 +93,11 @@ export function GroupPage() {
       back="/"
       action={
         <Link to={`/group/${groupId}/members`}>
-          <Button variant="ghost">
-            {openSlots > 0 ? `Members (${openSlots} open)` : 'Members'}
+          {/* Everyone in the group, joined or not — the old "Members (1 open)"
+              showed only the unclaimed slots, which read as the member count. */}
+          <Button variant="ghost" aria-label={`${members.length} members, ${openSlots} not joined yet`}>
+            {members.length} {members.length === 1 ? 'member' : 'members'}
+            {openSlots > 0 && <span className="font-normal text-slate-400"> · {openSlots} to join</span>}
           </Button>
         </Link>
       }
@@ -70,6 +122,8 @@ export function GroupPage() {
           <Link to={`/group/${groupId}/settle`}><Button variant="secondary" className="w-full">Settle up</Button></Link>
         </div>
       )}
+
+      {!dismissed && <WhatsNew groupId={groupId} items={activity} onDismiss={() => setDismissed(true)} />}
 
       {unconfirmed.length > 0 && (
         <div className="space-y-1.5 rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-200">
