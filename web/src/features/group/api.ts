@@ -30,10 +30,15 @@ export const joinGroup = httpsCallable<
   { memberId: string; groupName: string }
 >(functions, 'joinGroup');
 
-export const deleteGroup = httpsCallable<{ groupId: string }, { groupId: string; deleted: boolean }>(
-  functions,
-  'deleteGroup',
-);
+/**
+ * Creator-only, two stages: `soft` (default) marks the group deleted and
+ * read-only, `restore` undoes it, `permanent` really removes it — refused by
+ * the server until a week after the soft delete, and without the name typed.
+ */
+export const deleteGroup = httpsCallable<
+  { groupId: string; mode?: 'soft' | 'restore' | 'permanent'; confirmName?: string },
+  { groupId: string; status: string; changed: boolean }
+>(functions, 'deleteGroup');
 
 /**
  * Creator-only. Rejects unless the member appears in no expense at all — a

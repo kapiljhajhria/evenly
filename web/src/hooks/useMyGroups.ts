@@ -57,8 +57,9 @@ export function useMyGroups(uid: string | undefined): MyGroupsState {
         .filter((m) => groupData.has(m.groupId))
         .map((m) => ({ memberId: m.memberId, memberName: m.memberName, group: { id: m.groupId, ...groupData.get(m.groupId)! } }))
         .sort((a, b) => {
-          // Open groups first, then most recently active.
-          if (a.group.status !== b.group.status) return a.group.status === 'active' ? -1 : 1;
+          // Open groups first, then closed, then deleted; most recently active within each.
+          const rank = (status: string) => (status === 'active' ? 0 : status === 'closed' ? 1 : 2);
+          if (a.group.status !== b.group.status) return rank(a.group.status) - rank(b.group.status);
           return lastActivity(b.group) - lastActivity(a.group);
         });
       setState({ groups, loading: false, error: null });

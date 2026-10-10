@@ -61,38 +61,64 @@ export function HomePage() {
         />
       ) : (
         <ul className="space-y-2">
-          {groups.map(({ group, memberId }) => {
-            const net = netFor(group.balances ?? {}, memberId);
-            return (
-              <li key={group.id}>
-                <Link to={`/group/${group.id}`} className="block">
-                  <Card className="flex items-center gap-3 transition hover:ring-brand-500">
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2">
-                        <span className="truncate font-semibold">{group.name}</span>
-                        {user && (
-                          <NewActivityPill groupId={group.id} uid={user.uid} myMemberId={memberId} onCount={onCount} />
-                        )}
-                      </p>
-                      <p className="text-sm text-slate-500">
-                        {group.status === 'closed'
-                          ? 'Closed'
-                          : net === 0
-                            ? 'All settled up'
-                            : net > 0
-                              ? 'you are owed'
-                              : 'you owe'}
-                      </p>
-                    </div>
-                    {group.status === 'active' && net !== 0 && (
-                      <Money paise={Math.abs(net)} colored className={net > 0 ? 'text-emerald-600' : 'text-red-600'} />
-                    )}
-                  </Card>
-                </Link>
-              </li>
-            );
-          })}
+          {groups
+            .filter(({ group }) => group.status !== 'deleted')
+            .map(({ group, memberId }) => {
+              const net = netFor(group.balances ?? {}, memberId);
+              return (
+                <li key={group.id}>
+                  <Link to={`/group/${group.id}`} className="block">
+                    <Card className="flex items-center gap-3 transition hover:ring-brand-500">
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-2">
+                          <span className="truncate font-semibold">{group.name}</span>
+                          {user && (
+                            <NewActivityPill groupId={group.id} uid={user.uid} myMemberId={memberId} onCount={onCount} />
+                          )}
+                        </p>
+                        <p className="text-sm text-slate-500">
+                          {group.status === 'closed'
+                            ? 'Closed'
+                            : net === 0
+                              ? 'All settled up'
+                              : net > 0
+                                ? 'you are owed'
+                                : 'you owe'}
+                        </p>
+                      </div>
+                      {group.status === 'active' && net !== 0 && (
+                        <Money paise={Math.abs(net)} colored className={net > 0 ? 'text-emerald-600' : 'text-red-600'} />
+                      )}
+                    </Card>
+                  </Link>
+                </li>
+              );
+            })}
         </ul>
+      )}
+
+      {/* Deleted groups stay listed — clearly — until the creator removes
+          them for good, so nobody wonders where a group went. */}
+      {groups.some(({ group }) => group.status === 'deleted') && (
+        <section className="space-y-2">
+          <p className="px-1 text-xs font-medium tracking-wide text-slate-400 uppercase">Deleted groups</p>
+          <ul className="space-y-2">
+            {groups
+              .filter(({ group }) => group.status === 'deleted')
+              .map(({ group }) => (
+                <li key={group.id}>
+                  <Link to={`/group/${group.id}`} className="block">
+                    <Card className="flex items-center gap-3 bg-red-50/60 ring-red-100 transition hover:ring-red-300">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-slate-500 line-through">{group.name}</p>
+                        <p className="text-sm text-red-700">Deleted · read-only · can be restored</p>
+                      </div>
+                    </Card>
+                  </Link>
+                </li>
+              ))}
+          </ul>
+        </section>
       )}
 
       {groups.length > 0 && (

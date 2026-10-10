@@ -24,7 +24,12 @@ export interface TimestampLike {
   toDate(): Date;
 }
 
-export type GroupStatus = 'active' | 'closed';
+/**
+ * `deleted` is a soft delete: read-only for everyone, still listed, and
+ * restorable by the creator. Only `deleteGroup` in permanent mode — at least
+ * GROUP_PURGE_WAIT_DAYS later — really removes a group.
+ */
+export type GroupStatus = 'active' | 'closed' | 'deleted';
 export type ExpenseType = 'expense' | 'settlement';
 export type SplitType = 'equal' | 'amount' | 'percent' | 'portions';
 export type ReceiptStatus = 'none' | 'pending' | 'uploaded' | 'failed';
@@ -101,6 +106,11 @@ export interface Group<TS = TimestampLike> {
   defaultSplit: DefaultSplit | null;
   createdAt: TS;
   closedAt: TS | null;
+  /** Set while soft-deleted. Absent on every group never deleted. */
+  deletedAt?: TS | null;
+  deletedBy?: Uid | null;
+  /** What a restore goes back to: `active` or `closed`. */
+  statusBeforeDelete?: 'active' | 'closed' | null;
 }
 
 export interface Member<TS = TimestampLike> {

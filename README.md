@@ -41,9 +41,9 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (198 tests, no emulator)
-npm run test:rules       # Firestore + Storage rules vs the emulators (153 tests)
-npm run test:integration # functions + real client modules (74 tests)
+npm test                 # pure logic in shared/ and web/ (200 tests, no emulator)
+npm run test:rules       # Firestore + Storage rules vs the emulators (157 tests)
+npm run test:integration # functions + real client modules (82 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
 ```
@@ -119,6 +119,12 @@ workspace-only version spec is unresolvable from the public registry.
   receipt and comments are kept. The list filters deleted entries out
   client-side (old docs have no field, so no backfill); the Deleted page reads
   them with `deletedAt != null`. Only `deleteGroup` really removes expenses.
+- **Groups are deleted in two stages.** `deleteGroup` defaults to a soft
+  delete (`status: 'deleted'`, read-only for everyone, restorable) — the
+  default matters, because app versions from before this call it with no
+  mode. `mode: 'permanent'` is refused until `GROUP_PURGE_WAIT_DAYS` (7) after
+  the soft delete and without `confirmName` matching the group name; it is
+  the only code path that hard-deletes expenses, comments and receipts.
 - **"What's new" is computed on the client.** `users/{uid}/seen/{groupId}`
   (private, server-timestamped) records each person's last visit; three small
   range queries (`createdAt` / comment `createdAt` / `deletedAt` > last visit)

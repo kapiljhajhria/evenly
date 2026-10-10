@@ -10,7 +10,7 @@ import { BalancePanel } from './BalancePanel.js';
 import { EditableGroupName } from './EditableGroupName.js';
 import { ExpenseList } from '../expense/ExpenseList.js';
 import { ExportButton } from '../export/ExportButton.js';
-import { DeleteGroupCard } from './DeleteGroupCard.js';
+import { DeleteGroupCard, DeletedGroupPanel } from './DeleteGroupCard.js';
 import { buildActivity } from '../activity/activity.js';
 import { useActivitySince, useLastSeen } from '../activity/useActivity.js';
 import { WhatsNew } from '../activity/WhatsNew.js';
@@ -102,10 +102,26 @@ export function GroupPage() {
         </Link>
       }
     >
-      {!isActive && (
-        <Card className="bg-slate-100 text-sm text-slate-600">
-          This group is closed and read-only. Everything settled up.
-        </Card>
+      {group.status === 'deleted' ? (
+        <DeletedGroupPanel
+          groupId={groupId}
+          groupName={group.name}
+          isCreator={isCreator}
+          deletedByName={
+            group.deletedBy === user?.uid
+              ? 'you'
+              : (members.find((m) => m.uid === group.deletedBy)?.name ?? 'the group creator')
+          }
+          deletedAtMs={group.deletedAt?.toMillis() ?? null}
+          balances={group.balances ?? {}}
+          members={exportMembers}
+        />
+      ) : (
+        !isActive && (
+          <Card className="bg-slate-100 text-sm text-slate-600">
+            This group is closed and read-only. Everything settled up.
+          </Card>
+        )
       )}
 
       <BalancePanel
@@ -197,15 +213,7 @@ export function GroupPage() {
         />
       </Card>
 
-      {isCreator && (
-        <DeleteGroupCard
-          groupId={groupId}
-          groupName={group.name}
-          closed={!isActive}
-          balances={group.balances ?? {}}
-          members={exportMembers}
-        />
-      )}
+      {isCreator && group.status !== 'deleted' && <DeleteGroupCard groupId={groupId} groupName={group.name} />}
     </AppShell>
   );
 }

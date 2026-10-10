@@ -186,3 +186,13 @@ export function localTimeString(at: Date = new Date()): string {
 /** Soft-deleted: still stored and visible on the Deleted page, out of balances. */
 export const isDeleted = (expense: { deletedAt?: unknown }): boolean =>
   expense.deletedAt !== undefined && expense.deletedAt !== null;
+
+/** A soft-deleted group can only be deleted for good this many days later. */
+export const GROUP_PURGE_WAIT_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** When permanent deletion becomes allowed for a group soft-deleted at `deletedAtMs`. */
+export const purgeAllowedAtMs = (deletedAtMs: number): number => deletedAtMs + GROUP_PURGE_WAIT_DAYS * DAY_MS;
+
+export const canPurgeNow = (deletedAtMs: number | null | undefined, nowMs: number): boolean =>
+  typeof deletedAtMs === 'number' && nowMs >= purgeAllowedAtMs(deletedAtMs);

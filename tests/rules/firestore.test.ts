@@ -610,6 +610,32 @@ describe('closed groups are read-only', () => {
   });
 });
 
+describe('soft-deleted groups are read-only', () => {
+  beforeEach(async () => {
+    await seedGroup(env, { status: 'deleted', deletedAt: Timestamp.now(), deletedBy: ALICE, statusBeforeDelete: 'active' });
+    await seedExpense(env, 'old', { paidBy: SLOT_BOB, createdBy: BOB });
+  });
+
+  it('still lets members read it', async () => {
+    await assertSucceeds(getDoc(doc(as(BOB), 'groups', GROUP_ID)));
+    await assertSucceeds(getDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'old')));
+  });
+
+  it('blocks new expenses, comments and edits', async () => {
+    await assertFails(setDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'new'), expenseData({ createdBy: BOB, paidBy: SLOT_BOB })));
+    await assertFails(addDoc(collection(as(BOB), 'groups', GROUP_ID, 'comments'), { expenseId: 'old', uid: BOB, text: 'hi', createdAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as(ALICE), 'groups', GROUP_ID), { name: 'Back' }));
+  });
+
+  it('blocks the creator from un-deleting it by writing status directly', async () => {
+    await assertFails(updateDoc(doc(as(ALICE), 'groups', GROUP_ID), { status: 'active' }));
+  });
+
+  it('blocks deleting the group doc from a client', async () => {
+    await assertFails(deleteDoc(doc(as(ALICE), 'groups', GROUP_ID)));
+  });
+});
+
 describe('expenses: not confirmed', () => {
   it('accepts an expense flagged as not confirmed', async () => {
     await assertSucceeds(

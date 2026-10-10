@@ -17,6 +17,9 @@ import {
   PartsError,
   partsTotal,
   usableParts,
+  canPurgeNow,
+  GROUP_PURGE_WAIT_DAYS,
+  purgeAllowedAtMs,
 } from './expense.js';
 
 describe('isValidTime', () => {
@@ -197,5 +200,20 @@ describe('formatDateOf / formatDateTimeOf', () => {
 
   it('formats midnight as 12 am', () => {
     expect(formatDateTimeOf(new Date(2026, 9, 10, 0, 0), 'dd/mm/yy')).toBe('10/10/26, 12:00 am');
+  });
+});
+
+describe('group purge wait', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  it('waits a full week after the soft delete', () => {
+    expect(GROUP_PURGE_WAIT_DAYS).toBe(7);
+    expect(purgeAllowedAtMs(1000)).toBe(1000 + 7 * DAY);
+    expect(canPurgeNow(0, 7 * DAY - 1)).toBe(false);
+    expect(canPurgeNow(0, 7 * DAY)).toBe(true);
+  });
+
+  it('never allows it for a group that was not soft-deleted', () => {
+    expect(canPurgeNow(null, Date.now())).toBe(false);
+    expect(canPurgeNow(undefined, Date.now())).toBe(false);
   });
 });
