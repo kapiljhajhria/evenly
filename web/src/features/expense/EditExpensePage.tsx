@@ -8,6 +8,7 @@ import { useComments, useExpense, useExpenses } from '../../hooks/useExpenses.js
 import { ExpenseHistory } from './ExpenseHistory.js';
 import { expensePermissions, restoreExpense, updateExpense } from './api.js';
 import { ExpenseForm } from './ExpenseForm.js';
+import { CategoryPicker } from './CategoryPicker.js';
 import { ReceiptSection } from '../receipt/ReceiptSection.js';
 import { CommentThread } from './CommentThread.js';
 import { UnconfirmedNotice } from './UnconfirmedNotice.js';
@@ -39,7 +40,7 @@ export function EditExpensePage() {
   }
 
   const myMemberId = members.find((m) => m.uid === user.uid)?.id ?? null;
-  const { canEdit, canManageReceipt, canConfirm, canRestore } = expensePermissions({
+  const { canEdit, canCategorize, canManageReceipt, canConfirm, canRestore } = expensePermissions({
     expense,
     payerUid: byId[expense.paidBy]?.uid,
     uid: user.uid,
@@ -87,9 +88,17 @@ export function EditExpensePage() {
       <AppShell title="Edit" back={back}>
         <ErrorNote>
           {group.status === 'active'
-            ? `Only ${byId[expense.paidBy]?.name ?? 'the person who paid'} can edit this. Ask them to fix it.`
+            ? `Only ${byId[expense.paidBy]?.name ?? 'the person who paid'} or the group creator can edit this. Ask them to fix it.`
             : 'This group is closed, so it is read-only.'}
         </ErrorNote>
+        {canCategorize && (
+          <CategoryCard
+            groupId={groupId}
+            expenseId={expenseId}
+            value={expense.category ?? null}
+            custom={customCategoriesIn(recent)}
+          />
+        )}
         {expense.unconfirmed && (
           <UnconfirmedNotice
             groupId={groupId}
@@ -107,9 +116,18 @@ export function EditExpensePage() {
   }
 
   const isSettlement = expense.type === 'settlement';
+  // The creator may fix anyone's entry; say so, so it is a deliberate act.
+  const payerUid = byId[expense.paidBy]?.uid ?? null;
+  const someoneElses = payerUid !== user.uid && !(payerUid === null && expense.createdBy === user.uid);
 
   return (
     <AppShell title={isSettlement ? 'Edit settlement' : 'Edit expense'} back={back} width={isSettlement ? 'narrow' : 'medium'}>
+      {someoneElses && (
+        <p className="mb-5 rounded-xl bg-accent-100/70 px-3 py-2.5 text-sm text-slate-800 ring-1 ring-accent-300">
+          You're editing {byId[expense.paidBy]?.name ?? 'someone else'}'s {isSettlement ? 'payment' : 'expense'} as
+          the group creator. Your changes show in its history under your name.
+        </p>
+      )}
       <ExpenseForm
         members={members}
         myMemberId={myMemberId}
@@ -164,6 +182,45 @@ export function EditExpensePage() {
       <ReceiptSection groupId={groupId} expense={expense} canManage={canManageReceipt} />
       <ExpenseHistory groupId={groupId} expense={expense} membersById={byId} />
     </AppShell>
+  );
+}
+
+/** For members who may not edit the expense: the category alone, saved on tap. */
+function CategoryCard({
+  groupId,
+  expenseId,
+  value,
+  custom,
+}: {
+  groupId: string;
+  expenseId: string;
+  value: string | null;
+  custom: readonly string[];
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <Card className="space-y-2">
+      <CategoryPicker
+        value={value}
+        custom={custom}
+        onChange={async (next) => {
+          if (busy) return;
+          setBusy(true);
+          setError(null);
+          try {
+            await updateExpense({ groupId, expenseId, changes: { category: next } });
+          } catch (err) {
+            setError((err as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      <p className={`text-xs ${error ? 'text-red-600' : 'text-slate-500'}`}>
+        {error ?? (busy ? 'Saving…' : 'Anyone in the group can set the category. It shows in the history below.')}
+      </p>
+    </Card>
   );
 }
 

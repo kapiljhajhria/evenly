@@ -200,7 +200,7 @@ export function LandingPage() {
         <Spotlight
           eyebrow="Records you can trust"
           title="Every change, on the record."
-          body="Only the person who paid can edit an expense, and every edit is kept as old → new with a name and a time. Deletes can be undone. Receipts sit right on the entry, and the whole thing exports to a tidy PDF."
+          body="Only the person who paid (or the group creator) can edit an expense, and every edit is kept as old → new with a name and a time. Deletes can be undone. Receipts sit right on the entry, and the whole thing exports to a tidy PDF."
           points={['Edit history on every expense', 'Up to 10 receipts — photos or PDF bills', 'PDF report and a ZIP of every original file']}
           screen={{ src: '/screens/history.webp', alt: 'An expense with its edit history' }}
         />

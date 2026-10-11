@@ -6,6 +6,7 @@ import {
   assertSplitsValid,
   computeSplits,
   MAX_RECEIPTS,
+  isDeleted,
   normalizeCategory,
   normalizeParts,
   partsTotal,
@@ -190,14 +191,31 @@ export function expensePermissions(args: {
   uid: string | undefined;
   groupCreatedBy: string;
   groupActive: boolean;
-}): { canEdit: boolean; canDelete: boolean; canManageReceipt: boolean; canConfirm: boolean; canRestore: boolean } {
+}): {
+  canEdit: boolean;
+  canCategorize: boolean;
+  canDelete: boolean;
+  canManageReceipt: boolean;
+  canConfirm: boolean;
+  canRestore: boolean;
+} {
   const { expense, payerUid, uid, groupCreatedBy, groupActive } = args;
   if (!groupActive || !uid) {
-    return { canEdit: false, canDelete: false, canManageReceipt: false, canConfirm: false, canRestore: false };
+    return {
+      canEdit: false,
+      canCategorize: false,
+      canDelete: false,
+      canManageReceipt: false,
+      canConfirm: false,
+      canRestore: false,
+    };
   }
   const owns = payerUid === uid || ((payerUid ?? null) === null && expense.createdBy === uid);
   return {
-    canEdit: owns,
+    // Mirrors updateExpense: the payer, or the group creator.
+    canEdit: owns || groupCreatedBy === uid,
+    // The category moves no money, so anyone in the group may set it.
+    canCategorize: expense.type === 'expense' && !isDeleted(expense),
     canDelete: owns || groupCreatedBy === uid,
     // The recorder too: they are usually the one holding the paper receipt,
     // even when the expense was paid by someone else. Payments too: a UPI

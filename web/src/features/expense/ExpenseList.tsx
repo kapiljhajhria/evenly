@@ -72,7 +72,7 @@ export function ExpenseList({
               const payer = membersById[expense.paidBy];
               const involvement = involvementOf(expense, myMemberId);
               const time = formatTime(expense.time);
-              const { canEdit, canDelete, canManageReceipt, canConfirm } = expensePermissions({
+              const { canEdit, canCategorize, canDelete, canManageReceipt, canConfirm } = expensePermissions({
                 expense,
                 payerUid: payer?.uid,
                 uid,
@@ -258,6 +258,14 @@ export function ExpenseList({
                             className="font-medium text-brand-600 hover:underline"
                           >
                             Edit
+                          </Link>
+                        )}
+                        {!canEdit && canCategorize && (
+                          <Link
+                            to={`/group/${groupId}/expense/${expense.id}`}
+                            className="font-medium text-brand-600 hover:underline"
+                          >
+                            {category?.value ? 'Change category' : 'Add category'}
                           </Link>
                         )}
                         <Link

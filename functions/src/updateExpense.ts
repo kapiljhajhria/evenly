@@ -167,15 +167,21 @@ export const updateExpense = onCall(async (request) => {
       return { changed: ['deleted'] };
     }
 
-    // Confirming (or flagging) is the one change the recorder may also make:
-    // they are usually the one who was unsure, and may be the first to find
-    // out. Anything else, including fixing the payer, stays with the owner.
-    const onlyConfirmation = Object.keys(changes).every((key) => key === 'unconfirmed');
-    const mayConfirm = onlyConfirmation && before.createdBy === uid;
-    if (!owns && !mayConfirm) {
+    // Full edits: the payer, or the group creator — the same escape hatch as
+    // delete, and every edit lands in history under their name.
+    //
+    // Two narrower changes are open to more people. Confirming (or flagging)
+    // is also the recorder's: they are usually the one who was unsure. The
+    // category is anyone's in the group: it moves no money, so letting
+    // everyone tidy it up costs nothing, and history still says who did.
+    const keys = Object.keys(changes);
+    const mayEditAll = owns || group.createdBy === uid;
+    const mayConfirm = keys.every((key) => key === 'unconfirmed') && before.createdBy === uid;
+    const mayCategorize = keys.every((key) => key === 'category');
+    if (!mayEditAll && !mayConfirm && !mayCategorize) {
       throw new HttpsError(
         'permission-denied',
-        'Only the person who paid can edit this. Ask them to fix it.',
+        'Only the person who paid, or the group creator, can edit this. Anyone can change its category.',
       );
     }
     if (wasDeleted) {

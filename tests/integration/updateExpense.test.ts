@@ -53,9 +53,12 @@ async function callFunction(name: string, user: EmulatorUser, data: unknown) {
 const OWNER = 'm-owner';
 const PAYER = 'm-payer';
 const GHOST = 'm-ghost';
+const OTHER = 'm-other';
 
 let creator: EmulatorUser;
 let payer: EmulatorUser;
+/** In the group, but neither the creator nor the payer. */
+let other: EmulatorUser;
 let groupId: string;
 
 const groupRef = () => db.collection('groups').doc(groupId);
@@ -67,6 +70,7 @@ beforeAll(async () => {
   db = getFirestore(app);
   creator = await signUp(`upd-creator-${Date.now()}@example.com`);
   payer = await signUp(`upd-payer-${Date.now()}@example.com`);
+  other = await signUp(`upd-other-${Date.now()}@example.com`);
 });
 
 afterAll(async () => {
@@ -83,7 +87,7 @@ beforeEach(async () => {
     status: 'active',
     inviteToken: 'e'.repeat(24),
     inviteTokenExpiresAt: Timestamp.fromMillis(Date.now() + 7 * 86_400_000),
-    uids: [creator.uid, payer.uid],
+    uids: [creator.uid, payer.uid, other.uid],
     balances: {},
     balancesZero: true,
     defaultSplit: null,
@@ -93,6 +97,7 @@ beforeEach(async () => {
     [OWNER, 'Owner', creator.uid],
     [PAYER, 'Payer', payer.uid],
     [GHOST, 'Ghost', null],
+    [OTHER, 'Other', other.uid],
   ];
   for (const [id, name, uid] of slots) {
     await ref.collection('members').doc(id).set({
@@ -214,14 +219,28 @@ describe('updateExpense', () => {
     expect(splits.find((s) => s.memberId === GHOST)?.owedPaise).toBe(3334);
   });
 
-  it('refuses an edit from someone who is not the payer', async () => {
+  it('refuses an edit from a member who neither paid nor created the group', async () => {
     const id = await seedLegacyExpense();
-    const call = await callFunction('updateExpense', creator, {
+    const call = await callFunction('updateExpense', other, {
       groupId, expenseId: id, changes: { description: 'Sneaky' },
     });
     expect(call.ok).toBe(false);
     expect(call.status).toBe('PERMISSION_DENIED');
     expect((await readExpense(id))['description']).toBe('Dinner');
+  });
+
+  it("lets the group creator edit someone else's expense, recorded under their name", async () => {
+    const id = await seedLegacyExpense(PAYER, payer.uid);
+    const call = await callFunction('updateExpense', creator, {
+      groupId, expenseId: id, changes: { description: 'Fixed by the creator', amountPaise: 90000 },
+    });
+    expect(call.ok, call.message).toBe(true);
+    const after = await readExpense(id);
+    expect(after['description']).toBe('Fixed by the creator');
+    expect(after['amountPaise']).toBe(90000);
+    const history = await readHistory(id);
+    expect(history).toHaveLength(1);
+    expect(history[0]!['editedBy']).toBe(creator.uid);
   });
 
   it('lets the recorder edit while the payer slot is unclaimed', async () => {
@@ -403,6 +422,32 @@ describe('updateExpense', () => {
       expect((await readExpense(id))['category']).toBeNull();
     });
 
+    it('lets any member change only the category, recorded under their name', async () => {
+      const id = await seedLegacyExpense(PAYER, payer.uid);
+      const call = await callFunction('updateExpense', other, { groupId, expenseId: id, changes: { category: 'snacks' } });
+      expect(call.ok, call.message).toBe(true);
+      expect((await readExpense(id))['category']).toBe('snacks');
+      expect((await readHistory(id))[0]!['editedBy']).toBe(other.uid);
+    });
+
+    it('refuses a member who sends anything else alongside the category', async () => {
+      const id = await seedLegacyExpense(PAYER, payer.uid);
+      const call = await callFunction('updateExpense', other, {
+        groupId, expenseId: id, changes: { category: 'food', amountPaise: 1 },
+      });
+      expect(call.ok).toBe(false);
+      expect(call.status).toBe('PERMISSION_DENIED');
+      expect((await readExpense(id))['amountPaise']).toBe(60000);
+    });
+
+    it('refuses a category on a deleted expense', async () => {
+      const id = await seedLegacyExpense(PAYER, payer.uid);
+      await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { deleted: true } });
+      const call = await callFunction('updateExpense', other, { groupId, expenseId: id, changes: { category: 'food' } });
+      expect(call.ok).toBe(false);
+      expect(call.status).toBe('FAILED_PRECONDITION');
+    });
+
     it('refuses a category that is too long', async () => {
       const id = await seedLegacyExpense();
       const call = await callFunction('updateExpense', payer, {
@@ -435,11 +480,12 @@ describe('updateExpense', () => {
     });
 
     it('lets the recorder flag it again, but nothing more', async () => {
-      const id = await seedLegacyExpense(PAYER, creator.uid);
-      const flag = await callFunction('updateExpense', creator, { groupId, expenseId: id, changes: { unconfirmed: true } });
+      // A recorder who is not the group creator — the creator may edit anything.
+      const id = await seedLegacyExpense(PAYER, other.uid);
+      const flag = await callFunction('updateExpense', other, { groupId, expenseId: id, changes: { unconfirmed: true } });
       expect(flag.ok, flag.message).toBe(true);
 
-      const sneak = await callFunction('updateExpense', creator, {
+      const sneak = await callFunction('updateExpense', other, {
         groupId, expenseId: id, changes: { unconfirmed: false, paidBy: OWNER },
       });
       expect(sneak.ok).toBe(false);
