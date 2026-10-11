@@ -27,7 +27,7 @@ export function AddExpensePage() {
   const last = saved ? restoreSplit(saved, memberIds) : null;
 
   return (
-    <AppShell title="Add expense" back={`/group/${groupId}`}>
+    <AppShell title="Add expense" back={`/group/${groupId}`} width="medium">
       <ExpenseForm
         members={members}
         myMemberId={myMemberId}

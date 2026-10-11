@@ -12,14 +12,25 @@ import { EditExpensePage } from '../features/expense/EditExpensePage.js';
 import { SettleUpPage } from '../features/expense/SettleUpPage.js';
 import { DeletedPage } from '../features/expense/DeletedPage.js';
 import { SettingsPage } from '../features/settings/SettingsPage.js';
+import { LandingPage } from '../features/landing/LandingPage.js';
+import { useAuth } from '../hooks/useAuth.js';
+import { FullPageSpinner } from '../components/ui.js';
 
 const protect = (element: React.ReactNode) => <RequireAuth>{element}</RequireAuth>;
+
+/** Signed in: your groups. Signed out: the front page, rather than a bare sign-in form. */
+function Root() {
+  const { user, loading } = useAuth();
+  if (loading) return <FullPageSpinner />;
+  return user ? <HomePage /> : <LandingPage />;
+}
 
 export const router = createBrowserRouter([
   { path: '/signin', element: <SignInPage /> },
   // Join handles its own signed-out state so the invite survives sign-in.
   { path: '/join/:groupId/:token', element: <JoinPage /> },
-  { path: '/', element: protect(<HomePage />) },
+  { path: '/about', element: <LandingPage /> },
+  { path: '/', element: <Root /> },
   { path: '/new', element: protect(<CreateGroupPage />) },
   { path: '/profile', element: protect(<ProfilePage />) },
   { path: '/settings', element: protect(<SettingsPage />) },

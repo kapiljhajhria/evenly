@@ -30,18 +30,28 @@ export function BalancePanel({
   const mine = transfers.filter((t) => t.from === myMemberId || t.to === myMemberId);
 
   return (
-    <Card className="space-y-3">
-      <div>
-        <p className="text-sm text-slate-500">
-          {myNet === 0 ? 'You are all settled up' : myNet > 0 ? 'You are owed' : 'You owe'}
+    <Card className="relative space-y-4 overflow-hidden">
+      {/* The ledger's two rules, as in the mark. */}
+      <span
+        aria-hidden
+        className={`absolute inset-x-0 top-0 h-1 ${myNet > 0 ? 'bg-emerald-500' : myNet < 0 ? 'bg-red-500' : 'bg-accent-300'}`}
+      />
+      <div className="pt-1">
+        <p className="text-xs font-medium tracking-[0.14em] text-slate-500 uppercase">
+          {myNet === 0 ? 'Your balance' : myNet > 0 ? 'You are owed' : 'You owe'}
         </p>
-        {myNet !== 0 && (
-          <Money paise={Math.abs(myNet)} className={`text-3xl font-bold ${myNet > 0 ? 'text-emerald-600' : 'text-red-600'}`} />
+        {myNet !== 0 ? (
+          <Money
+            paise={Math.abs(myNet)}
+            className={`font-display mt-1 block text-4xl font-semibold tracking-tight sm:text-5xl ${myNet > 0 ? 'text-emerald-600' : 'text-red-600'}`}
+          />
+        ) : (
+          <p className="font-display mt-1 text-2xl font-semibold">You are all settled up</p>
         )}
       </div>
 
       {mine.length > 0 && (
-        <ul className="space-y-1 border-t border-slate-100 pt-3 text-sm">
+        <ul className="space-y-1.5 border-t border-slate-100 pt-3 text-sm">
           {mine.map((transfer) => (
             <li key={`${transfer.from}-${transfer.to}`} className="flex justify-between gap-3">
               <span className="truncate text-slate-600">
@@ -56,7 +66,7 @@ export function BalancePanel({
       )}
 
       <details className="border-t border-slate-100 pt-3">
-        <summary className="cursor-pointer text-sm text-slate-500">
+        <summary className="cursor-pointer text-sm text-slate-500 transition hover:text-slate-900">
           Everyone's balance{canRename && ' · rename yourself'}
         </summary>
         <ul className="mt-2 space-y-1 text-sm">

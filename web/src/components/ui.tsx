@@ -4,9 +4,9 @@ import { formatPaise } from '@app/shared';
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-700',
-  secondary: 'bg-white text-slate-900 ring-1 ring-slate-200 hover:bg-slate-50',
-  ghost: 'text-slate-600 hover:bg-slate-100',
+  primary: 'bg-brand-600 text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.12)] hover:bg-brand-700 active:bg-brand-700',
+  secondary: 'bg-white text-slate-900 ring-1 ring-slate-300/80 hover:bg-slate-50 hover:ring-slate-400',
+  ghost: 'text-slate-600 hover:bg-slate-200/60',
   danger: 'bg-red-600 text-white hover:bg-red-700',
 };
 
@@ -21,7 +21,7 @@ export function Button({
     <button
       {...props}
       disabled={props.disabled || busy}
-      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition disabled:opacity-50 ${BUTTON_STYLES[variant]} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 ${BUTTON_STYLES[variant]} ${className}`}
     >
       {busy && <Spinner className="size-4" />}
       {children}
@@ -33,7 +33,7 @@ export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInpu
   return (
     <input
       {...props}
-      className={`min-h-11 w-full rounded-xl border-0 bg-white px-3 text-base ring-1 ring-slate-200 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-brand-500 ${className}`}
+      className={`min-h-11 w-full rounded-xl border-0 bg-white px-3 text-base ring-1 ring-slate-300/80 outline-none transition placeholder:text-slate-400 hover:ring-slate-400 focus:ring-2 focus:ring-brand-600 ${className}`}
     />
   );
 }
@@ -49,7 +49,11 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 }
 
 export function Card({ className = '', children }: { className?: string; children: ReactNode }) {
-  return <div className={`rounded-2xl bg-white p-4 ring-1 ring-slate-200 ${className}`}>{children}</div>;
+  return (
+    <div className={`rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgb(60_40_10/0.04)] ring-1 ring-slate-200 md:p-5 ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 export function Spinner({ className = 'size-5' }: { className?: string }) {
@@ -75,12 +79,29 @@ export function Avatar({ name, photoURL, className = 'size-9' }: { name: string;
   }
   return (
     <span
-      className={`${className} grid shrink-0 place-items-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600`}
+      className={`${className} grid shrink-0 place-items-center rounded-full text-xs font-semibold ${avatarTone(name)}`}
       aria-hidden
     >
       {name.slice(0, 2).toUpperCase()}
     </span>
   );
+}
+
+/** Warm, quiet tints — enough to tell people apart at a glance, never louder than an amount. */
+const AVATAR_TONES = [
+  'bg-amber-100 text-amber-900',
+  'bg-rose-100 text-rose-900',
+  'bg-sky-100 text-sky-900',
+  'bg-lime-100 text-lime-900',
+  'bg-violet-100 text-violet-900',
+  'bg-teal-100 text-teal-900',
+  'bg-orange-100 text-orange-900',
+];
+
+function avatarTone(name: string): string {
+  let hash = 0;
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  return AVATAR_TONES[Math.abs(hash) % AVATAR_TONES.length]!;
 }
 
 /** Positive = they are owed. Colour and sign always agree with that. */
@@ -100,9 +121,9 @@ export function ErrorNote({ children }: { children: ReactNode }) {
 
 export function EmptyState({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return (
-    <div className="space-y-3 rounded-2xl border border-dashed border-slate-300 px-6 py-10 text-center">
-      <p className="font-semibold text-slate-700">{title}</p>
-      <p className="text-sm text-slate-500">{body}</p>
+    <div className="space-y-3 rounded-2xl border border-dashed border-slate-300 bg-white/40 px-6 py-12 text-center">
+      <p className="font-display text-xl font-semibold text-slate-800">{title}</p>
+      <p className="mx-auto max-w-sm text-sm text-pretty text-slate-500">{body}</p>
       {action}
     </div>
   );

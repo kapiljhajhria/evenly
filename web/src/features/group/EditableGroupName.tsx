@@ -11,8 +11,8 @@ export function EditableGroupName({ groupId, name }: { groupId: string; name: st
       maxLength={MAX_GROUP_NAME}
       failureMessage="Could not rename this group."
       onSave={(next) => renameGroup(groupId, next)}
-      displayClassName="py-0.5 text-lg font-bold hover:bg-slate-200/70"
-      inputClassName="text-lg font-bold"
+      displayClassName="py-0.5 text-xl font-semibold hover:bg-slate-200/70 sm:text-2xl"
+      inputClassName="text-lg font-semibold"
     />
   );
 }

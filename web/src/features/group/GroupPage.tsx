@@ -103,6 +103,7 @@ export function GroupPage() {
         isCreator && isActive ? <EditableGroupName groupId={groupId} name={group.name} /> : group.name
       }
       back="/"
+      width="wide"
       action={
         <Link to={`/group/${groupId}/members`}>
           {/* Everyone in the group, joined or not — the old "Members (1 open)"
@@ -114,142 +115,156 @@ export function GroupPage() {
         </Link>
       }
     >
-      {group.status === 'deleted' ? (
-        <DeletedGroupPanel
-          groupId={groupId}
-          groupName={group.name}
-          isCreator={isCreator}
-          deletedByName={
-            group.deletedBy === user?.uid
-              ? 'you'
-              : (members.find((m) => m.uid === group.deletedBy)?.name ?? 'the group creator')
-          }
-          deletedAtMs={group.deletedAt?.toMillis() ?? null}
-          balances={group.balances ?? {}}
-          members={exportMembers}
-        />
-      ) : group.status === 'closed' ? (
-        <ClosedCard
-          groupId={groupId}
-          isCreator={isCreator}
-          closedByName={
-            group.closedBy
-              ? group.closedBy === user?.uid
-                ? 'you'
-                : (members.find((m) => m.uid === group.closedBy)?.name ?? 'the group creator')
-              : null
-          }
-          closedAtMs={group.closedAt?.toMillis() ?? null}
-          unused={!group.lastExpenseAt}
-        />
-      ) : !group.lastExpenseAt ? (
-        <UnusedGroupNote
-          createdAtMs={group.createdAt?.toMillis() ?? null}
-          reopenedAtMs={group.reopenedAt?.toMillis() ?? null}
-        />
-      ) : (
-        group.balancesZero && (
-          <SettledCard
+      {/* One column on a phone, in reading order. From lg up: balances and
+          actions on the left, the running list on the right. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-x-8 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+        <div className="space-y-4">
+          {group.status === 'deleted' ? (
+            <DeletedGroupPanel
+              groupId={groupId}
+              groupName={group.name}
+              isCreator={isCreator}
+              deletedByName={
+                group.deletedBy === user?.uid
+                  ? 'you'
+                  : (members.find((m) => m.uid === group.deletedBy)?.name ?? 'the group creator')
+              }
+              deletedAtMs={group.deletedAt?.toMillis() ?? null}
+              balances={group.balances ?? {}}
+              members={exportMembers}
+            />
+          ) : group.status === 'closed' ? (
+            <ClosedCard
+              groupId={groupId}
+              isCreator={isCreator}
+              closedByName={
+                group.closedBy
+                  ? group.closedBy === user?.uid
+                    ? 'you'
+                    : (members.find((m) => m.uid === group.closedBy)?.name ?? 'the group creator')
+                  : null
+              }
+              closedAtMs={group.closedAt?.toMillis() ?? null}
+              unused={!group.lastExpenseAt}
+            />
+          ) : !group.lastExpenseAt ? (
+            <UnusedGroupNote
+              createdAtMs={group.createdAt?.toMillis() ?? null}
+              reopenedAtMs={group.reopenedAt?.toMillis() ?? null}
+            />
+          ) : (
+            group.balancesZero && (
+              <SettledCard
+                groupId={groupId}
+                isCreator={isCreator}
+                zeroSinceMs={group.zeroSince?.toMillis() ?? null}
+                lastExpenseAtMs={group.lastExpenseAt?.toMillis() ?? null}
+                unconfirmedCount={unconfirmed.length}
+              />
+            )
+          )}
+
+          <BalancePanel
             groupId={groupId}
-            isCreator={isCreator}
-            zeroSinceMs={group.zeroSince?.toMillis() ?? null}
-            lastExpenseAtMs={group.lastExpenseAt?.toMillis() ?? null}
-            unconfirmedCount={unconfirmed.length}
+            balances={group.balances ?? {}}
+            members={members}
+            myMemberId={myMemberId}
+            canRename={isActive && myMemberId !== null}
           />
-        )
-      )}
 
-      <BalancePanel
-        groupId={groupId}
-        balances={group.balances ?? {}}
-        members={members}
-        myMemberId={myMemberId}
-        canRename={isActive && myMemberId !== null}
-      />
-
-      {isActive && (
-        <div className="grid grid-cols-2 gap-2">
-          <Link to={`/group/${groupId}/add`}><Button className="w-full">Add expense</Button></Link>
-          <Link to={`/group/${groupId}/settle`}><Button variant="secondary" className="w-full">Settle up</Button></Link>
+          {isActive && (
+            <div className="grid grid-cols-2 gap-2">
+              <Link to={`/group/${groupId}/add`}>
+                <Button className="w-full">
+                  <span aria-hidden className="text-lg leading-none">+</span> Add expense
+                </Button>
+              </Link>
+              <Link to={`/group/${groupId}/settle`}><Button variant="secondary" className="w-full">Settle up</Button></Link>
+            </div>
+          )}
         </div>
-      )}
 
-      {!dismissed && <WhatsNew groupId={groupId} items={activity} onDismiss={() => setDismissed(true)} />}
+        <div className="min-w-0 space-y-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          {!dismissed && <WhatsNew groupId={groupId} items={activity} onDismiss={() => setDismissed(true)} />}
 
-      {unconfirmed.length > 0 && (
-        <div className="space-y-1.5 rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-200">
-          <p className="text-sm font-semibold text-amber-900">
-            {unconfirmed.length === 1 ? '1 expense needs' : `${unconfirmed.length} expenses need`} confirming
-          </p>
-          <p className="text-xs text-amber-800">
-            They count in the balances above, but who paid or how they were split may be wrong. If you know, confirm
-            them, or comment so whoever added them can fix it.
-          </p>
-          <ul className="flex flex-wrap gap-1.5">
-            {unconfirmed.map((expense) => (
-              <li key={expense.id}>
-                <Link
-                  to={`/group/${groupId}/expense/${expense.id}`}
-                  className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-900 ring-1 ring-amber-300 hover:bg-amber-100"
-                >
-                  {expense.description}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          {unconfirmed.length > 0 && (
+            <div className="space-y-1.5 rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-200">
+              <p className="text-sm font-semibold text-amber-900">
+                {unconfirmed.length === 1 ? '1 expense needs' : `${unconfirmed.length} expenses need`} confirming
+              </p>
+              <p className="text-xs text-amber-800">
+                They count in the balances above, but who paid or how they were split may be wrong. If you know, confirm
+                them, or comment so whoever added them can fix it.
+              </p>
+              <ul className="flex flex-wrap gap-1.5">
+                {unconfirmed.map((expense) => (
+                  <li key={expense.id}>
+                    <Link
+                      to={`/group/${groupId}/expense/${expense.id}`}
+                      className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-900 ring-1 ring-amber-300 hover:bg-amber-100"
+                    >
+                      {expense.description}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <ErrorNote>{expensesError?.message}</ErrorNote>
+
+          {deleted.length > 0 && (
+            <Link
+              to={`/group/${groupId}/deleted`}
+              className="flex items-center gap-2 rounded-2xl bg-red-50 px-3 py-2.5 text-sm text-red-800 ring-1 ring-red-100 hover:bg-red-100"
+            >
+              <svg viewBox="0 0 24 24" className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="flex-1">
+                {deleted.length === 1 ? '1 entry was deleted' : `${deleted.length} entries were deleted`} — see what,
+                and by whom
+              </span>
+              <span aria-hidden>›</span>
+            </Link>
+          )}
+
+          <ExpenseList
+            groupId={groupId}
+            // Deleted entries live on the Deleted page, not in the running list.
+            expenses={expenses.filter((expense) => !isDeleted(expense))}
+            membersById={byId}
+            myMemberId={myMemberId}
+            uid={user?.uid}
+            groupCreatedBy={group.createdBy}
+            groupActive={isActive}
+            hasMore={hasMore}
+            onLoadMore={loadMore}
+            comments={comments}
+          />
         </div>
-      )}
 
-      <ErrorNote>{expensesError?.message}</ErrorNote>
+        <div className="space-y-4 lg:col-start-1 lg:row-start-2 lg:self-start">
+          <Card className="space-y-3">
+            <div>
+              <p className="font-display text-lg font-semibold">Export</p>
+              <p className="text-sm text-slate-500">
+                A PDF of every expense and balance, with all receipts at the end.
+              </p>
+            </div>
+            <ExportButton
+              groupId={groupId}
+              groupName={group.name}
+              closed={!isActive}
+              balances={group.balances ?? {}}
+              members={exportMembers}
+              withZip
+            />
+          </Card>
 
-      {deleted.length > 0 && (
-        <Link
-          to={`/group/${groupId}/deleted`}
-          className="flex items-center gap-2 rounded-2xl bg-red-50 px-3 py-2.5 text-sm text-red-800 ring-1 ring-red-100 hover:bg-red-100"
-        >
-          <svg viewBox="0 0 24 24" className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="flex-1">
-            {deleted.length === 1 ? '1 entry was deleted' : `${deleted.length} entries were deleted`} — see what,
-            and by whom
-          </span>
-          <span aria-hidden>›</span>
-        </Link>
-      )}
-
-      <ExpenseList
-        groupId={groupId}
-        // Deleted entries live on the Deleted page, not in the running list.
-        expenses={expenses.filter((expense) => !isDeleted(expense))}
-        membersById={byId}
-        myMemberId={myMemberId}
-        uid={user?.uid}
-        groupCreatedBy={group.createdBy}
-        groupActive={isActive}
-        hasMore={hasMore}
-        onLoadMore={loadMore}
-        comments={comments}
-      />
-
-      <Card className="space-y-3">
-        <div>
-          <p className="font-semibold">Export</p>
-          <p className="text-sm text-slate-500">
-            A PDF of every expense and balance, with all receipts at the end.
-          </p>
+          {isCreator && group.status !== 'deleted' && <DeleteGroupCard groupId={groupId} groupName={group.name} />}
         </div>
-        <ExportButton
-          groupId={groupId}
-          groupName={group.name}
-          closed={!isActive}
-          balances={group.balances ?? {}}
-          members={exportMembers}
-          withZip
-        />
-      </Card>
-
-      {isCreator && group.status !== 'deleted' && <DeleteGroupCard groupId={groupId} groupName={group.name} />}
+      </div>
     </AppShell>
   );
 }

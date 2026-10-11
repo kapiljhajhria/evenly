@@ -91,7 +91,7 @@ export function InstallCard() {
   return (
     <Card className="space-y-3 ring-brand-500/40">
       <div className="flex items-start justify-between gap-3">
-        <p className="font-semibold">Install Evenly</p>
+        <p className="font-display text-lg font-semibold">Install Evenly</p>
         <button
           type="button"
           onClick={() => {
@@ -112,7 +112,7 @@ export function InstallCard() {
 export function InstallSettings() {
   return (
     <Card className="space-y-2">
-      <p className="font-semibold">Install the app</p>
+      <p className="font-display text-lg font-semibold">Install the app</p>
       <InstallBody compact />
     </Card>
   );

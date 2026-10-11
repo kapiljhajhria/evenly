@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router';
+import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { useAuth } from '../../hooks/useAuth.js';
 import { getJoinInfo, joinGroup, type JoinInfo } from '../group/api.js';
 import { Avatar, Button, Card, ErrorNote, FullPageSpinner, Spinner } from '../../components/ui.js';
 import { isInAppWebview } from '../../lib/webview.js';
 import { WebviewBanner } from './WebviewBanner.js';
+import { Logo } from '../../components/Layout.js';
 
 function callableMessage(error: unknown): string {
   const err = error as { code?: string; message?: string };
@@ -43,14 +44,18 @@ export function JoinPage() {
   if (!user) {
     return (
       <div className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-5 p-6">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold">You've been invited</h1>
+        <Logo />
+        <div className="space-y-1 pt-4">
+          <h1 className="text-3xl font-semibold">You've been invited</h1>
           <p className="text-sm text-slate-500">Sign in to pick your spot in the group.</p>
         </div>
         {isInAppWebview() && <WebviewBanner />}
         <Button onClick={() => navigate('/signin', { state: { from: `/join/${groupId}/${token}` } })}>
           Sign in to join
         </Button>
+        <Link to="/about" className="text-center text-sm text-slate-500 underline underline-offset-4 hover:text-slate-900">
+          New to Evenly? See what it does
+        </Link>
       </div>
     );
   }
@@ -58,7 +63,7 @@ export function JoinPage() {
   if (error) {
     return (
       <div className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-4 p-6">
-        <h1 className="text-xl font-bold">This invite didn't work</h1>
+        <h1 className="text-2xl font-semibold">This invite didn't work</h1>
         <ErrorNote>{error}</ErrorNote>
         <Button variant="secondary" onClick={() => navigate('/')}>Go to my groups</Button>
       </div>
@@ -82,10 +87,11 @@ export function JoinPage() {
   const unclaimed = info.members.filter((m) => !m.claimed);
 
   return (
-    <div className="mx-auto w-full max-w-sm space-y-5 p-6">
-      <div className="space-y-1">
+    <div className="mx-auto w-full max-w-sm space-y-5 p-6 sm:pt-16">
+      <Logo />
+      <div className="space-y-1 pt-2">
         <p className="text-sm text-slate-500">You've been invited to</p>
-        <h1 className="text-2xl font-bold">{info.groupName}</h1>
+        <h1 className="text-3xl font-semibold">{info.groupName}</h1>
       </div>
 
       {unclaimed.length === 0 ? (
@@ -104,7 +110,7 @@ export function JoinPage() {
                   type="button"
                   disabled={claiming !== null}
                   onClick={() => void claim(member.memberId)}
-                  className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-200 transition hover:ring-brand-500 disabled:opacity-50"
+                  className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:ring-slate-400 disabled:opacity-50"
                 >
                   <Avatar name={member.name} />
                   <span className="flex-1 font-medium">{member.name}</span>
@@ -118,7 +124,7 @@ export function JoinPage() {
 
       {info.members.some((m) => m.claimed) && (
         <div className="space-y-2">
-          <p className="text-xs font-medium tracking-wide text-slate-400 uppercase">Already in</p>
+          <p className="text-xs font-medium tracking-[0.14em] text-slate-400 uppercase">Already in</p>
           <ul className="flex flex-wrap gap-2">
             {info.members.filter((m) => m.claimed).map((member) => (
               <li key={member.memberId} className="flex items-center gap-2 rounded-full bg-slate-100 py-1 pr-3 pl-1 text-sm">

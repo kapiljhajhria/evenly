@@ -144,38 +144,43 @@ export function ExpenseForm({
     !busy;
 
   return (
-    <form onSubmit={submit} className="space-y-5">
-      <Field label={settlementMode ? 'Note on this settlement' : 'What was it for?'}>
-        <Input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          maxLength={140}
-          required
-          autoFocus
-        />
-      </Field>
-
-      {settlementMode ? (
-        <PaymentAmountField rows={rows} onChange={setRows} />
-      ) : (
-        <Field label="Amount (₹)">
+    // Laptop and up: the details on the left, the split and Save on the right.
+    <form
+      onSubmit={submit}
+      className={settlementMode ? 'space-y-5' : 'lg:grid lg:grid-cols-2 lg:items-start lg:gap-10'}
+    >
+      <div className="space-y-5">
+        <Field label={settlementMode ? 'Note on this settlement' : 'What was it for?'}>
           <Input
-            inputMode="decimal"
-            value={amountRaw}
-            onChange={(e) => setAmountRaw(e.target.value)}
-            placeholder="0.00"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            maxLength={140}
             required
+            autoFocus
           />
         </Field>
-      )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Date">
-          <DateField value={date} onChange={setDate} required />
-        </Field>
-        <Field label="Time">
-          <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-        </Field>
+        {settlementMode ? (
+          <PaymentAmountField rows={rows} onChange={setRows} />
+        ) : (
+          <Field label="Amount (₹)">
+            <Input
+              inputMode="decimal"
+              value={amountRaw}
+              onChange={(e) => setAmountRaw(e.target.value)}
+              placeholder="0.00"
+              required
+            />
+          </Field>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Date">
+            <DateField value={date} onChange={setDate} required />
+          </Field>
+          <Field label="Time">
+            <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          </Field>
       </div>
 
       {!settlementMode && (
@@ -186,7 +191,7 @@ export function ExpenseForm({
               setPaidByTouched(true);
               setPaidBy(e.target.value);
             }}
-            className="min-h-11 w-full rounded-xl border-0 bg-white px-3 text-base ring-1 ring-slate-200 focus:ring-2 focus:ring-brand-500"
+            className="min-h-11 w-full rounded-xl border-0 bg-white px-3 text-base ring-1 ring-slate-300/80 outline-none transition hover:ring-slate-400 focus:ring-2 focus:ring-brand-600"
           >
             {members.map((member) => (
               <option key={member.id} value={member.id}>
@@ -204,7 +209,7 @@ export function ExpenseForm({
           onChange={(e) => setNote(e.target.value)}
           maxLength={MAX_NOTE_LENGTH}
           rows={3}
-          className="w-full rounded-xl border-0 bg-white p-3 text-base ring-1 ring-slate-200 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-brand-500"
+          className="w-full rounded-xl border-0 bg-white p-3 text-base ring-1 ring-slate-300/80 outline-none placeholder:text-slate-400 transition hover:ring-slate-400 focus:ring-2 focus:ring-brand-600"
           placeholder="Dev covered the tip separately…"
         />
       </Field>
@@ -239,22 +244,26 @@ export function ExpenseForm({
         </label>
       )}
 
-      {!settlementMode && (
-        <SplitEditor
-          members={members}
-          amountPaise={amountPaise}
-          splitType={splitType}
-          value={splitValue}
-          onSplitTypeChange={setSplitType}
-          onChange={setSplitValue}
-        />
-      )}
+      </div>
 
-      <ErrorNote>{error}</ErrorNote>
-      {!online && <p className="text-center text-xs text-slate-500">{OFFLINE_HINT}</p>}
-      <Button type="submit" busy={busy} disabled={!canSubmit} className="w-full">
-        {submitLabel}
-      </Button>
+      <div className={`space-y-5 ${settlementMode ? '' : 'mt-5 lg:sticky lg:top-24 lg:mt-0'}`}>
+        {!settlementMode && (
+          <SplitEditor
+            members={members}
+            amountPaise={amountPaise}
+            splitType={splitType}
+            value={splitValue}
+            onSplitTypeChange={setSplitType}
+            onChange={setSplitValue}
+          />
+        )}
+
+        <ErrorNote>{error}</ErrorNote>
+        {!online && <p className="text-center text-xs text-slate-500">{OFFLINE_HINT}</p>}
+        <Button type="submit" busy={busy} disabled={!canSubmit} className="w-full">
+          {submitLabel}
+        </Button>
+      </div>
     </form>
   );
 }

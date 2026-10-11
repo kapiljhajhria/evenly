@@ -99,7 +99,7 @@ export function CommentThread({
             rows={1}
             placeholder={!online ? 'Offline — comments need a connection' : comments.length > 0 ? 'Reply…' : 'Add a comment…'}
             aria-label="Comment"
-            className="min-h-11 flex-1 resize-y rounded-xl border-0 bg-white px-3 py-2.5 text-sm ring-1 ring-slate-200 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-brand-500"
+            className="min-h-11 flex-1 resize-y rounded-xl border-0 bg-white px-3 py-2.5 text-sm ring-1 ring-slate-300/80 outline-none placeholder:text-slate-400 transition hover:ring-slate-400 focus:ring-2 focus:ring-brand-600"
           />
           <Button type="submit" variant="secondary" busy={busy} disabled={text.trim() === '' || !online}>
             Post

@@ -63,7 +63,7 @@ export function NotificationsCard() {
   return (
     <Card className="space-y-4">
       <div>
-        <p className="font-semibold">Notifications</p>
+        <p className="font-display text-lg font-semibold">Notifications</p>
         <p className="text-sm text-slate-500">
           Only about things that involve you. Per device — turn it on on each phone or laptop you use.
         </p>
@@ -79,7 +79,7 @@ export function NotificationsCard() {
       )}
       {state === 'needs-install' && (
         <div className="space-y-1 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
-          <p className="font-semibold">On iPhone, install Evenly first</p>
+          <p className="font-display text-lg font-semibold">On iPhone, install Evenly first</p>
           <p>
             In Safari tap <span className="font-medium">Share</span> →{' '}
             <span className="font-medium">Add to Home Screen</span>, open Evenly from your Home Screen, and come back
@@ -89,7 +89,7 @@ export function NotificationsCard() {
       )}
       {state === 'blocked' && (
         <div className="space-y-1 rounded-xl bg-red-50 p-3 text-sm text-red-900 ring-1 ring-red-100">
-          <p className="font-semibold">Notifications are blocked for Evenly</p>
+          <p className="font-display text-lg font-semibold">Notifications are blocked for Evenly</p>
           <p>{BLOCKED_HELP[detectPlatform()]}</p>
         </div>
       )}

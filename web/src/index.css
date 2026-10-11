@@ -1,10 +1,43 @@
 @import 'tailwindcss';
+/* Self-hosted so they ship in the precache and the app looks the same offline. */
+@import '@fontsource-variable/fraunces/opsz.css';
+@import '@fontsource-variable/fraunces/opsz-italic.css';
+@import '@fontsource-variable/instrument-sans/wght.css';
 
+/*
+ * Paper, ink and one marigold accent. "slate" is re-tinted warm so every
+ * existing gray in the app moves with it; "brand" is the ink used for primary
+ * actions; "accent" (marigold) is kept for the mark and a few highlights.
+ * Green and red stay purely semantic: owed / owe.
+ */
 @theme {
-  --color-brand-50: oklch(0.97 0.02 240);
-  --color-brand-500: oklch(0.62 0.15 245);
-  --color-brand-600: oklch(0.55 0.16 248);
-  --color-brand-700: oklch(0.47 0.15 250);
+  --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces Variable', ui-serif, Georgia, serif;
+
+  --color-slate-50: oklch(0.978 0.006 85);
+  --color-slate-100: oklch(0.955 0.008 80);
+  --color-slate-200: oklch(0.91 0.01 78);
+  --color-slate-300: oklch(0.85 0.012 75);
+  --color-slate-400: oklch(0.68 0.014 70);
+  --color-slate-500: oklch(0.55 0.014 65);
+  --color-slate-600: oklch(0.44 0.013 60);
+  --color-slate-700: oklch(0.36 0.012 60);
+  --color-slate-800: oklch(0.27 0.01 60);
+  --color-slate-900: oklch(0.21 0.008 60);
+  --color-slate-950: oklch(0.16 0.006 60);
+
+  --color-brand-50: oklch(0.965 0.035 85);
+  --color-brand-500: oklch(0.45 0.015 60);
+  --color-brand-600: oklch(0.23 0.01 60);
+  --color-brand-700: oklch(0.15 0.008 60);
+
+  --color-accent-100: oklch(0.95 0.06 88);
+  --color-accent-200: oklch(0.91 0.1 86);
+  --color-accent-300: oklch(0.86 0.14 82);
+  --color-accent-400: oklch(0.8 0.16 75);
+  --color-accent-600: oklch(0.6 0.14 60);
+
+  --color-paper: oklch(0.975 0.01 85);
 }
 
 @layer base {
@@ -12,12 +45,35 @@
     -webkit-text-size-adjust: 100%;
   }
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-paper font-sans text-slate-900 antialiased;
     /* Keep content clear of the iOS home indicator. */
     padding-bottom: env(safe-area-inset-bottom);
+  }
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    letter-spacing: -0.015em;
+  }
+  ::selection {
+    background: var(--color-accent-200);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 2px;
   }
   /* Amounts line up in columns only with tabular figures. */
   .tabular {
     font-variant-numeric: tabular-nums;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

@@ -26,9 +26,17 @@ export function HomePage() {
   const totalNew = groups.reduce((sum, { group }) => sum + (newCounts[group.id] ?? 0), 0);
   useEffect(() => setAppBadge(totalNew), [totalNew]);
 
+  const live = groups.filter(({ group }) => group.status !== 'deleted');
+  const nets = live
+    .filter(({ group }) => group.status === 'active')
+    .map(({ group, memberId }) => netFor(group.balances ?? {}, memberId));
+  const owedTotal = nets.filter((n) => n > 0).reduce((sum, n) => sum + n, 0);
+  const oweTotal = nets.filter((n) => n < 0).reduce((sum, n) => sum - n, 0);
+
   return (
     <AppShell
       title="Your groups"
+      width="wide"
       action={
         <div className="flex items-center gap-1">
           <Link
@@ -53,6 +61,36 @@ export function HomePage() {
       }
     >
       <ErrorNote>{error?.message}</ErrorNote>
+
+      {live.length > 0 && (
+        <section
+          aria-label="Across all your groups"
+          className="grid gap-px overflow-hidden rounded-3xl bg-slate-200 ring-1 ring-slate-200 sm:grid-cols-[1.4fr_1fr_1fr]"
+        >
+          <div className="bg-brand-600 p-5 text-white sm:p-6">
+            <p className="text-xs font-medium tracking-[0.14em] text-white/60 uppercase">Hello{displayName ? `, ${displayName.split(' ')[0]}` : ''}</p>
+            <p className="font-display mt-2 text-2xl leading-snug text-pretty sm:text-[1.7rem]">
+              {owedTotal === oweTotal ? (
+                'You are square with everyone, overall.'
+              ) : (
+                <>
+                  Overall, you {owedTotal > oweTotal ? 'are owed' : 'owe'}{' '}
+                  <Money paise={Math.abs(owedTotal - oweTotal)} className="text-accent-300" />
+                </>
+              )}
+            </p>
+          </div>
+          <div className="flex items-center justify-between gap-3 bg-white p-5 sm:block sm:p-6">
+            <p className="text-sm text-slate-500">You are owed</p>
+            <Money paise={owedTotal} className={`font-display text-2xl font-semibold sm:mt-2 sm:block sm:text-3xl ${owedTotal > 0 ? 'text-emerald-600' : 'text-slate-300'}`} />
+          </div>
+          <div className="flex items-center justify-between gap-3 bg-white p-5 sm:block sm:p-6">
+            <p className="text-sm text-slate-500">You owe</p>
+            <Money paise={oweTotal} className={`font-display text-2xl font-semibold sm:mt-2 sm:block sm:text-3xl ${oweTotal > 0 ? 'text-red-600' : 'text-slate-300'}`} />
+          </div>
+        </section>
+      )}
+
       <InstallCard />
 
       {/* Offline with nothing loaded, Firestore answers with an EMPTY result
@@ -71,18 +109,16 @@ export function HomePage() {
           action={<Link to="/new"><Button>Create a group</Button></Link>}
         />
       ) : (
-        <ul className="space-y-2">
-          {groups
-            .filter(({ group }) => group.status !== 'deleted')
-            .map(({ group, memberId }) => {
+        <ul className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
+          {live.map(({ group, memberId }) => {
               const net = netFor(group.balances ?? {}, memberId);
               return (
                 <li key={group.id}>
-                  <Link to={`/group/${group.id}`} className="block">
-                    <Card className="flex items-center gap-3 transition hover:ring-brand-500">
-                      <div className="min-w-0 flex-1">
+                  <Link to={`/group/${group.id}`} className="group block h-full">
+                    <Card className="flex h-full items-center gap-3 transition group-hover:-translate-y-0.5 group-hover:shadow-[0_8px_24px_-12px_rgb(60_40_10/0.25)] group-hover:ring-slate-300 sm:min-h-28 sm:flex-col sm:items-stretch sm:justify-between">
+                      <div className="min-w-0 flex-1 sm:flex-none">
                         <p className="flex items-center gap-2">
-                          <span className="truncate font-semibold">{group.name}</span>
+                          <span className="font-display truncate text-lg font-semibold">{group.name}</span>
                           {user && (
                             <NewActivityPill groupId={group.id} uid={user.uid} myMemberId={memberId} onCount={onCount} />
                           )}
@@ -98,7 +134,11 @@ export function HomePage() {
                         </p>
                       </div>
                       {group.status === 'active' && net !== 0 && (
-                        <Money paise={Math.abs(net)} colored className={net > 0 ? 'text-emerald-600' : 'text-red-600'} />
+                        <Money
+                          paise={Math.abs(net)}
+                          colored
+                          className={`font-display text-lg font-semibold sm:text-2xl ${net > 0 ? 'text-emerald-600' : 'text-red-600'}`}
+                        />
                       )}
                     </Card>
                   </Link>
@@ -112,8 +152,8 @@ export function HomePage() {
           them for good, so nobody wonders where a group went. */}
       {groups.some(({ group }) => group.status === 'deleted') && (
         <section className="space-y-2">
-          <p className="px-1 text-xs font-medium tracking-wide text-slate-400 uppercase">Deleted groups</p>
-          <ul className="space-y-2">
+          <p className="px-1 pt-2 text-xs font-medium tracking-[0.14em] text-slate-400 uppercase">Deleted groups</p>
+          <ul className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
             {groups
               .filter(({ group }) => group.status === 'deleted')
               .map(({ group }) => (
@@ -133,8 +173,10 @@ export function HomePage() {
       )}
 
       {groups.length > 0 && (
-        <Link to="/new" className="block">
-          <Button variant="secondary" className="w-full">Create another group</Button>
+        <Link to="/new" className="block sm:inline-block">
+          <Button variant="secondary" className="w-full sm:w-auto">
+            <span aria-hidden className="text-lg leading-none">+</span> Create another group
+          </Button>
         </Link>
       )}
     </AppShell>

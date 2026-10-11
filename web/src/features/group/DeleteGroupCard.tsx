@@ -41,7 +41,7 @@ export function DeleteGroupCard({ groupId, groupName }: { groupId: string; group
   return (
     <Card className="space-y-4 ring-red-200">
       <div className="space-y-1">
-        <p className="font-semibold text-red-700">Delete “{groupName}”?</p>
+        <p className="font-display text-lg font-semibold text-red-700">Delete “{groupName}”?</p>
         <p className="text-sm text-slate-600">
           It becomes read-only and is marked as deleted for everyone in the group. Nothing is removed yet, and you can
           restore it at any time.
@@ -125,7 +125,7 @@ export function DeletedGroupPanel({
   return (
     <div className="space-y-3">
       <div className="space-y-1 rounded-2xl bg-red-50 p-4 text-sm text-red-900 ring-1 ring-red-100">
-        <p className="font-semibold">This group was deleted</p>
+        <p className="font-display text-lg font-semibold">This group was deleted</p>
         <p>
           Deleted by {deletedByName}
           {deletedAtMs !== null && ` on ${formatDateTimeOf(new Date(deletedAtMs), dateFormat)}`}. It is read-only for
@@ -136,7 +136,7 @@ export function DeletedGroupPanel({
       {isCreator && (
         <Card className="space-y-4">
           <div className="space-y-2">
-            <p className="font-semibold">Changed your mind?</p>
+            <p className="font-display text-lg font-semibold">Changed your mind?</p>
             <Button
               type="button"
               variant="secondary"
@@ -159,7 +159,7 @@ export function DeletedGroupPanel({
           </div>
 
           <div className="space-y-3 border-t border-slate-100 pt-4">
-            <p className="font-semibold text-red-700">Delete permanently</p>
+            <p className="font-display text-lg font-semibold text-red-700">Delete permanently</p>
             {!purgeable ? (
               <p className="text-sm text-slate-600">
                 Possible from{' '}

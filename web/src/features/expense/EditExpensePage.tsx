@@ -108,7 +108,7 @@ export function EditExpensePage() {
   const isSettlement = expense.type === 'settlement';
 
   return (
-    <AppShell title={isSettlement ? 'Edit settlement' : 'Edit expense'} back={back}>
+    <AppShell title={isSettlement ? 'Edit settlement' : 'Edit expense'} back={back} width={isSettlement ? 'narrow' : 'medium'}>
       <ExpenseForm
         members={members}
         myMemberId={myMemberId}

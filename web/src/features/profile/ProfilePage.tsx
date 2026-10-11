@@ -44,8 +44,8 @@ export function ProfilePage() {
                   throw err;
                 }
               }}
-              displayClassName="py-0.5 text-lg font-bold hover:bg-slate-100"
-              inputClassName="text-lg font-bold"
+              displayClassName="font-display py-0.5 text-2xl font-semibold hover:bg-slate-100"
+              inputClassName="text-lg font-semibold"
             />
             <p className="truncate text-sm text-slate-500">{user.email}</p>
           </div>
@@ -62,7 +62,7 @@ export function ProfilePage() {
       {groups.length > 0 && (
         <Card className="space-y-3">
           <div>
-            <p className="font-semibold">Your name in each group</p>
+            <p className="font-display text-lg font-semibold">Your name in each group</p>
             <p className="text-sm text-slate-500">
               This is what the other members see. Each group keeps its own, so changing one does
               not touch the others.
@@ -96,7 +96,7 @@ export function ProfilePage() {
 
       <Card className="space-y-3">
         <div>
-          <p className="font-semibold">Account</p>
+          <p className="font-display text-lg font-semibold">Account</p>
           <p className="text-sm text-slate-500">Signed in with {provider}.</p>
         </div>
         <Link to="/settings" className="block text-center text-sm text-brand-600 hover:underline">

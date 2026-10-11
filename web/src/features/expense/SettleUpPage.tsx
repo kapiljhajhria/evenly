@@ -22,7 +22,7 @@ import type { EncodedReceipt } from '../receipt/encode.js';
 import { pendingFor, queuePicked } from '../receipt/queue.js';
 
 const SELECT_CLASS =
-  'min-h-11 w-full rounded-xl border-0 bg-white px-3 text-base ring-1 ring-slate-200 focus:ring-2 focus:ring-brand-500';
+  'min-h-11 w-full rounded-xl border-0 bg-white px-3 text-base ring-1 ring-slate-300/80 outline-none transition hover:ring-slate-400 focus:ring-2 focus:ring-brand-600';
 
 /**
  * Settlements are trust-based: you pay over UPI outside the app, then record

@@ -59,15 +59,15 @@ export function ExpenseList({
       {days.map((day) => (
         <section key={day.date} aria-label={formatDate(day.date, dateFormat)} className="space-y-2">
           <div className="flex items-baseline justify-between gap-3 px-1">
-            <h3 className="text-lg font-bold tracking-tight text-slate-900">
+            <h3 className="text-xl font-semibold text-slate-900">
               {formatDate(day.date, dateFormat)}
-              <span className="ml-2 text-sm font-medium text-slate-400">{dayLabel(day.date)}</span>
+              <span className="ml-2 font-sans text-sm font-medium tracking-normal text-slate-400">{dayLabel(day.date)}</span>
             </h3>
             {day.spentPaise > 0 && (
               <span className="tabular shrink-0 text-xs text-slate-400">{formatPaise(day.spentPaise)} spent</span>
             )}
           </div>
-          <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
+          <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white shadow-[0_1px_2px_rgb(60_40_10/0.04)] ring-1 ring-slate-200">
             {day.items.map((expense) => {
               const payer = membersById[expense.paidBy];
               const involvement = involvementOf(expense, myMemberId);
@@ -104,7 +104,7 @@ export function ExpenseList({
                 <li key={expense.id} className={unsure ? 'border-l-4 border-amber-400 bg-amber-50/70' : ''}>
                   <details className="group">
                     <summary
-                      className={`flex cursor-pointer list-none items-start gap-3 p-3 ${
+                      className={`flex cursor-pointer list-none items-start gap-3 p-3 transition sm:px-4 ${
                         unsure ? 'hover:bg-amber-100/60' : 'hover:bg-slate-50'
                       }`}
                     >
@@ -140,13 +140,19 @@ export function ExpenseList({
                         <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-slate-400">
                           {time && <span>{time}</span>}
                           {thread.length > 0 && (
-                            <span aria-label={`${thread.length} comments`}>💬 {thread.length}</span>
+                            <span className="inline-flex items-center gap-0.5" aria-label={`${thread.length} comments`}>
+                              <MetaIcon d={ICONS.comment} /> {thread.length}
+                            </span>
                           )}
-                          {expense.note && <span aria-label="has a note">📝</span>}
-                          {expense.location && <span aria-label="has a location">📍</span>}
+                          {expense.note && <MetaIcon d={ICONS.note} label="has a note" />}
+                          {expense.location && <MetaIcon d={ICONS.pin} label="has a location" />}
                           {receipt.files > 0 && (
-                            <span aria-label={receipt.files === 1 ? 'has a receipt' : `${receipt.files} receipts`}>
-                              🧾{receipt.files > 1 ? ` ${receipt.files}` : ''}
+                            <span
+                              className="inline-flex items-center gap-0.5"
+                              aria-label={receipt.files === 1 ? 'has a receipt' : `${receipt.files} receipts`}
+                            >
+                              <MetaIcon d={ICONS.receipt} />
+                              {receipt.files > 1 ? ` ${receipt.files}` : ''}
                             </span>
                           )}
                           {receipt.attention > 0 && (
@@ -174,7 +180,7 @@ export function ExpenseList({
                       )}
                     </summary>
 
-                    <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 px-3 py-3 pl-15">
+                    <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 px-3 py-3 pl-15 sm:pr-4 sm:pl-16">
                       {unsure && (
                         <UnconfirmedNotice
                           groupId={groupId}
@@ -305,8 +311,35 @@ function YourPart({ involvement }: { involvement: Involvement }) {
   return (
     <div className={`shrink-0 text-right ${tone}`}>
       <p className="text-xs">{label}</p>
-      <p className="tabular font-semibold">{formatPaise(involvement.paise)}</p>
+      <p className="tabular font-display text-[1.05rem] font-semibold">{formatPaise(involvement.paise)}</p>
     </div>
+  );
+}
+
+const ICONS = {
+  comment: 'M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12Z',
+  note: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Zm0 0v5h5M9 13h6M9 17h4',
+  pin: 'M12 21s-7-5.6-7-11a7 7 0 1 1 14 0c0 5.4-7 11-7 11Zm0-8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z',
+  receipt: 'M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6M9 12h6M9 16h3',
+} as const;
+
+/** One-stroke icons for the card's meta row, same weight as the rest of the app. */
+function MetaIcon({ d, label }: { d: string; label?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      role={label ? 'img' : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+    >
+      <path d={d} />
+    </svg>
   );
 }
 

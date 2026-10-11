@@ -35,7 +35,7 @@ export function SettledCard({
   return (
     <Card className="space-y-3 bg-emerald-50/60 ring-emerald-200">
       <div>
-        <p className="font-semibold text-emerald-900">Everyone is settled up 🎉</p>
+        <p className="font-display text-lg font-semibold text-emerald-900">Everyone is settled up</p>
         <p className="text-sm text-emerald-900/80">
           This group closes automatically around{' '}
           <span className="font-medium">{formatDateOf(new Date(closesAt), dateFormat)}</span> — a week after the last
@@ -140,7 +140,7 @@ export function ClosedCard({
   return (
     <Card className="space-y-3 bg-slate-100">
       <div className="text-sm text-slate-600">
-        <p className="font-semibold text-slate-800">This group is closed</p>
+        <p className="font-display text-lg font-semibold text-slate-800">This group is closed</p>
         <p>
           {closedByName
             ? `Closed by ${closedByName}${when}`

@@ -54,9 +54,9 @@ export function UpdateTicker() {
 
   return (
     <div className="border-b border-brand-700 bg-brand-600 text-white">
-      <div className="mx-auto max-w-lg px-4 py-2.5">
+      <div className="mx-auto max-w-2xl px-4 py-2.5">
         <div className="flex items-center gap-3">
-          <span aria-hidden className="text-lg leading-none">✨</span>
+          <span aria-hidden className="size-2 shrink-0 rounded-full bg-accent-300" />
           <p className="min-w-0 flex-1 text-sm">
             <span className="font-semibold">A new version of Evenly is ready.</span>
           </p>

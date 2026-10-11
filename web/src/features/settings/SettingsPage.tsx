@@ -1,5 +1,6 @@
 import type { DateFormat } from '@app/shared';
 import { DATE_FORMATS, DEFAULT_DISPLAY_DATE_FORMAT, DEFAULT_INPUT_DATE_FORMAT, formatDate } from '@app/shared';
+import { Link } from 'react-router';
 import { AppShell } from '../../components/Layout.js';
 import { Card } from '../../components/ui.js';
 import { usePreferences } from '../../stores/preferences.js';
@@ -19,7 +20,7 @@ export function SettingsPage() {
 
       <Card className="space-y-4">
         <div>
-          <p className="font-semibold">Dates</p>
+          <p className="font-display text-lg font-semibold">Dates</p>
           <p className="text-sm text-slate-500">
             Only changes how dates look on this device. What is saved, and what everyone else sees, stays the same.
           </p>
@@ -40,6 +41,14 @@ export function SettingsPage() {
           onChange={setInputDateFormat}
         />
       </Card>
+
+      <Link
+        to="/about"
+        className="flex items-center justify-between rounded-2xl px-1 py-2 text-sm text-slate-500 transition hover:text-slate-900"
+      >
+        About Evenly — everything it does
+        <span aria-hidden>→</span>
+      </Link>
     </AppShell>
   );
 }
