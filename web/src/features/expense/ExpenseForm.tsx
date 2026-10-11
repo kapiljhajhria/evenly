@@ -17,6 +17,7 @@ import { useLocationCapture } from './useLocation.js';
 import { ReceiptField } from '../receipt/ReceiptPicker.js';
 import type { EncodedReceipt } from '../receipt/encode.js';
 import { PaymentAmountField } from './PaymentAmountField.js';
+import { CategoryPicker } from './CategoryPicker.js';
 import { parseRows, rowsFrom, type PartRow } from './parts.js';
 
 export interface ExpenseFormValues {
@@ -25,6 +26,8 @@ export interface ExpenseFormValues {
   date: string;
   time: string;
   location: ExpenseLocation | null;
+  /** Always null in settlement mode. */
+  category: string | null;
   amountPaise: number;
   paidBy: string;
   splitType: SplitType;
@@ -42,6 +45,7 @@ export interface ExpenseFormInitial {
   date?: string;
   time?: string | null;
   location?: ExpenseLocation | null;
+  category?: string | null;
   amountPaise?: number;
   paidBy?: string;
   splitType?: SplitType;
@@ -67,6 +71,7 @@ export function ExpenseForm({
   submitLabel,
   settlementMode = false,
   withReceipt = false,
+  customCategories = [],
   onSubmit,
 }: {
   members: WithId<Member<Timestamp>>[];
@@ -75,10 +80,13 @@ export function ExpenseForm({
   submitLabel: string;
   settlementMode?: boolean;
   withReceipt?: boolean;
+  /** Custom categories already used in the group, offered as chips. */
+  customCategories?: readonly string[];
   onSubmit: (values: ExpenseFormValues) => Promise<void>;
 }) {
   const [description, setDescription] = useState(initial?.description ?? '');
   const [note, setNote] = useState(initial?.note ?? '');
+  const [category, setCategory] = useState<string | null>(initial?.category ?? null);
   const [amountRaw, setAmountRaw] = useState(
     initial?.amountPaise !== undefined ? paiseToDecimalString(initial.amountPaise) : '',
   );
@@ -121,6 +129,7 @@ export function ExpenseForm({
         date,
         time,
         location: locationCapture.location,
+        category: settlementMode ? null : category,
         amountPaise,
         paidBy,
         splitType,
@@ -182,6 +191,8 @@ export function ExpenseForm({
             <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
           </Field>
       </div>
+
+      {!settlementMode && <CategoryPicker value={category} onChange={setCategory} custom={customCategories} />}
 
       {!settlementMode && (
         <Field label="Paid by">

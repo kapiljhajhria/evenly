@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { formatDateTimeOf, formatPaise, isDeleted, usableParts } from '@app/shared';
+import { customCategoriesIn, formatDateTimeOf, formatPaise, isDeleted, usableParts } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useDisplayDateFormat } from '../../stores/preferences.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
-import { useComments, useExpense } from '../../hooks/useExpenses.js';
+import { useComments, useExpense, useExpenses } from '../../hooks/useExpenses.js';
 import { ExpenseHistory } from './ExpenseHistory.js';
 import { expensePermissions, restoreExpense, updateExpense } from './api.js';
 import { ExpenseForm } from './ExpenseForm.js';
@@ -23,6 +23,7 @@ export function EditExpensePage() {
   const { expense, loading: expenseLoading } = useExpense(groupId, expenseId);
   const dateFormat = useDisplayDateFormat();
   const commentsByExpense = useComments(groupId);
+  const { expenses: recent } = useExpenses(groupId);
 
   if (groupLoading || membersLoading || expenseLoading) return <FullPageSpinner />;
   if (!group || !groupId || !expenseId || !user) return null;
@@ -114,6 +115,7 @@ export function EditExpensePage() {
         myMemberId={myMemberId}
         submitLabel="Save changes"
         settlementMode={isSettlement}
+        customCategories={customCategoriesIn(recent)}
         initial={{
           description: expense.description,
           note: expense.note ?? '',
@@ -122,6 +124,7 @@ export function EditExpensePage() {
           // rather than being silently stamped with "now".
           time: expense.time ?? '',
           location: expense.location ?? null,
+          category: expense.category ?? null,
           amountPaise: expense.amountPaise,
           paidBy: expense.paidBy,
           splitType: expense.splitType,
@@ -145,6 +148,7 @@ export function EditExpensePage() {
               ...(isSettlement
                 ? { parts: values.parts }
                 : {
+                    category: values.category,
                     unconfirmed: values.unconfirmed,
                     paidBy: values.paidBy,
                     splitType: values.splitType,

@@ -161,6 +161,11 @@ export interface Expense<TS = TimestampLike> {
   time?: string | null;
   location?: ExpenseLocation | null;
   /**
+   * What it was for: a preset id (`food`) or a custom name. Expenses only,
+   * optional; absent on everything recorded before it existed. See category.ts.
+   */
+  category?: string | null;
+  /**
    * Settlements only, optional: the individual transfers that make up
    * `amountPaise`, 2–MAX_PARTS of them, summing exactly to it. Absent or null
    * on everything else, and on every payment recorded before it existed.

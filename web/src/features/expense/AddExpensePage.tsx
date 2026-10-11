@@ -1,6 +1,8 @@
 import { useNavigate, useParams } from 'react-router';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
+import { useExpenses } from '../../hooks/useExpenses.js';
+import { customCategoriesIn } from '@app/shared';
 import { addExpense } from './api.js';
 import { ExpenseForm } from './ExpenseForm.js';
 import { loadLastSplit, restoreSplit, saveLastSplit } from './lastSplit.js';
@@ -14,6 +16,8 @@ export function AddExpensePage() {
   const navigate = useNavigate();
   const { group, loading: groupLoading } = useGroup(groupId);
   const { members, loading: membersLoading } = useMembers(groupId);
+  // The most recent page is enough to surface the group's custom categories.
+  const { expenses } = useExpenses(groupId);
 
   if (groupLoading || membersLoading) return <FullPageSpinner />;
   if (!group || !groupId || !user) return null;
@@ -33,6 +37,7 @@ export function AddExpensePage() {
         myMemberId={myMemberId}
         submitLabel="Save expense"
         withReceipt
+        customCategories={customCategoriesIn(expenses)}
         initial={{
           // Your last split here, else the group default; either stays editable.
           ...(last
@@ -53,6 +58,7 @@ export function AddExpensePage() {
             date: values.date,
             time: values.time,
             location: values.location,
+            category: values.category,
             amountPaise: values.amountPaise,
             paidBy: values.paidBy,
             splitType: values.splitType,

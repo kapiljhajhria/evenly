@@ -379,6 +379,40 @@ describe('updateExpense', () => {
     });
   });
 
+  describe('category', () => {
+    it('adds a category to an expense that predates the field, recording it in history', async () => {
+      const id = await seedLegacyExpense();
+      const call = await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { category: 'food' } });
+      expect(call.ok, call.message).toBe(true);
+      expect((await readExpense(id))['category']).toBe('food');
+      const history = await readHistory(id);
+      expect(history).toHaveLength(1);
+      expect(history[0]!['before']).toEqual({ category: null });
+    });
+
+    it('stores a typed preset name as the preset', async () => {
+      const id = await seedLegacyExpense();
+      await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { category: ' Fuel ' } });
+      expect((await readExpense(id))['category']).toBe('fuel');
+    });
+
+    it('removes it when sent null', async () => {
+      const id = await seedLegacyExpense();
+      await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { category: '🎢 Rides' } });
+      await callFunction('updateExpense', payer, { groupId, expenseId: id, changes: { category: null } });
+      expect((await readExpense(id))['category']).toBeNull();
+    });
+
+    it('refuses a category that is too long', async () => {
+      const id = await seedLegacyExpense();
+      const call = await callFunction('updateExpense', payer, {
+        groupId, expenseId: id, changes: { category: 'x'.repeat(31) },
+      });
+      expect(call.ok).toBe(false);
+      expect(call.status).toBe('INVALID_ARGUMENT');
+    });
+  });
+
   describe('not confirmed', () => {
     it('lets the payer confirm, recording it in history', async () => {
       const id = await seedLegacyExpense();

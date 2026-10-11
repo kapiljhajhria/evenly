@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Timestamp } from 'firebase/firestore';
 import type { DateFormat, Expense, Member, WithId } from '@app/shared';
-import { formatDate, formatDateTimeOf, formatPaise, formatTime } from '@app/shared';
+import { categoryInfo, formatDate, formatDateTimeOf, formatPaise, formatTime } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useExpenseHistory } from '../../hooks/useExpenses.js';
 import { useDisplayDateFormat } from '../../stores/preferences.js';
@@ -10,6 +10,7 @@ import { historyChanges, splitChanges, type FieldChange } from './history.js';
 
 const FIELD_LABELS: Record<string, string> = {
   description: 'Description',
+  category: 'Category',
   note: 'Note',
   date: 'Date',
   time: 'Time',
@@ -112,6 +113,7 @@ export function ExpenseHistory({
 /** "Bilal changed the amount". */
 const PHRASES: Record<string, string> = {
   description: 'the description',
+  category: 'the category',
   note: 'the note',
   date: 'the date',
   time: 'the time',
@@ -221,7 +223,17 @@ function describe(
   }
   if (field === 'splitType') return SPLIT_TYPE_LABELS[String(value)] ?? String(value);
   if (value === null || value === undefined || value === '') {
-    return field === 'note' ? 'no note' : field === 'time' ? 'no time' : field === 'location' ? 'none' : 'empty';
+    return field === 'note'
+      ? 'no note'
+      : field === 'time'
+        ? 'no time'
+        : field === 'location' || field === 'category'
+          ? 'none'
+          : 'empty';
+  }
+  if (field === 'category') {
+    const info = categoryInfo(value);
+    return `${info.emoji} ${info.label}`;
   }
   if (field === 'amountPaise') return formatPaise(value as number);
   if (field === 'paidBy') return memberName(value as string);

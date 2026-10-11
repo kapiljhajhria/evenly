@@ -403,6 +403,64 @@ describe('expenses: fields added after launch', () => {
   });
 });
 
+describe('expenses: category', () => {
+  const create = (data: Record<string, unknown>) =>
+    setDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'tagged'), data);
+
+  it.each([
+    ['a preset', 'food'],
+    ['a custom name with an emoji', '🎢 Rides'],
+    ['the 30-character cap', 'x'.repeat(30)],
+    ['null', null],
+  ])('accepts %s', async (_label, category) => {
+    await assertSucceeds(create(expenseData({ createdBy: BOB, paidBy: SLOT_BOB, category })));
+  });
+
+  it.each([
+    ['an empty string', ''],
+    ['31 characters', 'x'.repeat(31)],
+    ['a non-string', 7],
+    ['a list of tags', ['food']],
+  ])('rejects %s', async (_label, category) => {
+    await assertFails(create(expenseData({ createdBy: BOB, paidBy: SLOT_BOB, category })));
+  });
+
+  it('rejects a category on a payment', async () => {
+    await assertFails(
+      create(
+        expenseData({
+          type: 'settlement',
+          createdBy: BOB,
+          paidBy: SLOT_BOB,
+          splitType: 'amount',
+          amountPaise: 75000,
+          splits: [{ memberId: SLOT_ALICE, input: 75000, owedPaise: 75000 }],
+          category: 'food',
+        }),
+      ),
+    );
+  });
+
+  it('fits the expression budget with every optional field and 20 splits', async () => {
+    const splits = Array.from({ length: 20 }, (_, i) => ({ memberId: `m${i}`, input: 1, owedPaise: 500 }));
+    await assertSucceeds(
+      create(
+        expenseData({
+          createdBy: BOB,
+          paidBy: SLOT_BOB,
+          amountPaise: 10_000,
+          splits,
+          note: 'All the things',
+          time: '19:05',
+          location: { lat: 19.076, lng: 72.8777, accuracy: 12.5, name: null },
+          unconfirmed: true,
+          category: '🎢 Rides',
+        }),
+      ),
+    );
+  });
+});
+
 describe('expenses: settlement transfers', () => {
   const settlement = (parts: unknown, overrides: Record<string, unknown> = {}) =>
     expenseData({

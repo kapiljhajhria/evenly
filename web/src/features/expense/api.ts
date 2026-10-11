@@ -2,7 +2,15 @@ import { addDoc, deleteDoc, serverTimestamp, type Timestamp } from 'firebase/fir
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase.js';
 import type { Expense, ExpenseLocation, ExpenseType, SettlementPart, SplitType } from '@app/shared';
-import { assertSplitsValid, computeSplits, MAX_RECEIPTS, normalizeParts, partsTotal, settlementSplits } from '@app/shared';
+import {
+  assertSplitsValid,
+  computeSplits,
+  MAX_RECEIPTS,
+  normalizeCategory,
+  normalizeParts,
+  partsTotal,
+  settlementSplits,
+} from '@app/shared';
 import { commentDoc, commentsCol, expensesCol } from '../../lib/paths.js';
 
 export interface NewExpenseInput {
@@ -14,6 +22,8 @@ export interface NewExpenseInput {
   /** `HH:mm`, 24-hour. */
   time?: string | null;
   location?: ExpenseLocation | null;
+  /** A preset id or custom name; see category.ts in shared. */
+  category?: string | null;
   amountPaise: number;
   paidBy: string;
   splitType: SplitType;
@@ -52,6 +62,7 @@ function pendingReceipts(receipts: PendingReceipt[] | undefined) {
 export async function addExpense(input: NewExpenseInput): Promise<string> {
   const splits = computeSplits(input.amountPaise, input.splitType, input.splitInputs);
   assertSplitsValid(input.amountPaise, splits);
+  const category = normalizeCategory(input.category);
 
   const ref = await addDoc(expensesCol(input.groupId), {
     type: input.type ?? 'expense',
@@ -68,6 +79,8 @@ export async function addExpense(input: NewExpenseInput): Promise<string> {
     receiptStatus: 'none',
     receiptPath: null,
     ...pendingReceipts(input.receipts),
+    // Only written when picked, so uncategorized expenses keep their old shape.
+    ...(category ? { category } : {}),
     // Only written when set, so confirmed expenses keep their old shape.
     ...(input.unconfirmed ? { unconfirmed: true } : {}),
     createdAt: serverTimestamp(),
@@ -127,6 +140,8 @@ export interface UpdateExpenseChanges {
   date?: string;
   time?: string | null;
   location?: ExpenseLocation | null;
+  /** null removes it. Expenses only. */
+  category?: string | null;
   amountPaise?: number;
   paidBy?: string;
   splitType?: SplitType;

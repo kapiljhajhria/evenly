@@ -4,11 +4,13 @@ import { logger } from 'firebase-functions';
 import type { Expense, Group, Member, SettlementPart, SplitEntry, SplitInput, SplitType } from '@app/shared';
 import {
   assertSplitsValid,
+  CategoryError,
   computeSplits,
   isValidLocation,
   isValidTime,
   isDeleted,
   MAX_NOTE_LENGTH,
+  normalizeCategory,
   normalizeParts,
   PartsError,
   partsTotal,
@@ -25,6 +27,8 @@ interface Changes {
   date?: string;
   time?: string | null;
   location?: unknown;
+  /** A preset id or custom name; null or '' removes it. Expenses only. */
+  category?: unknown;
   amountPaise?: number;
   paidBy?: string;
   splitType?: SplitType;
@@ -42,7 +46,7 @@ interface Changes {
 
 /** Fields worth snapshotting into history when they change. */
 const TRACKED = [
-  'description', 'note', 'date', 'time', 'location',
+  'description', 'note', 'date', 'time', 'location', 'category',
   'amountPaise', 'paidBy', 'splitType', 'splits', 'parts',
 ] as const;
 
@@ -207,6 +211,18 @@ export const updateExpense = onCall(async (request) => {
       parts = null;
     }
 
+    let category: string | null = before.category ?? null;
+    if (changes.category !== undefined) {
+      try {
+        category = normalizeCategory(changes.category);
+      } catch (error) {
+        throw new HttpsError('invalid-argument', error instanceof CategoryError ? error.message : 'That category is not valid.');
+      }
+      if (category !== null && before.type !== 'expense') {
+        throw new HttpsError('invalid-argument', 'Only an expense can have a category.');
+      }
+    }
+
     const amountPaise = amountFromParts ?? changes.amountPaise ?? before.amountPaise;
     const paidBy = changes.paidBy ?? before.paidBy;
     const splitType = changes.splitType ?? before.splitType;
@@ -246,6 +262,7 @@ export const updateExpense = onCall(async (request) => {
       date: changes.date ?? before.date,
       time: changes.time !== undefined ? changes.time || null : before.time ?? null,
       location: changes.location !== undefined ? changes.location ?? null : before.location ?? null,
+      category,
       amountPaise,
       paidBy,
       splitType,

@@ -245,6 +245,22 @@ export function GroupPage() {
         </div>
 
         <div className="space-y-4 lg:col-start-1 lg:row-start-2 lg:self-start">
+          {group.lastExpenseAt && (
+            <Link
+              to={`/group/${groupId}/insights`}
+              className="group/insights flex items-center gap-3 rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgb(60_40_10/0.04)] ring-1 ring-slate-200 transition hover:ring-slate-300 md:p-5"
+            >
+              <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent-100 text-xl">
+                📊
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="font-display block text-lg font-semibold">Insights</span>
+                <span className="block text-sm text-slate-500">Group total, and who spent what — by category and by day.</span>
+              </span>
+              <span aria-hidden className="text-slate-400 transition group-hover/insights:translate-x-0.5">›</span>
+            </Link>
+          )}
+
           <Card className="space-y-3">
             <div>
               <p className="font-display text-lg font-semibold">Export</p>

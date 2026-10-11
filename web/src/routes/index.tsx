@@ -11,6 +11,7 @@ import { AddExpensePage } from '../features/expense/AddExpensePage.js';
 import { EditExpensePage } from '../features/expense/EditExpensePage.js';
 import { SettleUpPage } from '../features/expense/SettleUpPage.js';
 import { DeletedPage } from '../features/expense/DeletedPage.js';
+import { InsightsPage } from '../features/insights/InsightsPage.js';
 import { SettingsPage } from '../features/settings/SettingsPage.js';
 import { LandingPage } from '../features/landing/LandingPage.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
   { path: '/group/:id/add', element: protect(<AddExpensePage />) },
   { path: '/group/:id/settle', element: protect(<SettleUpPage />) },
   { path: '/group/:id/deleted', element: protect(<DeletedPage />) },
+  { path: '/group/:id/insights', element: protect(<InsightsPage />) },
   { path: '/group/:id/expense/:expenseId', element: protect(<EditExpensePage />) },
   { path: '*', element: <Navigate to="/" replace /> },
 ]);

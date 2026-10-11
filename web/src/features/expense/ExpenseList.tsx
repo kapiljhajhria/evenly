@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { Expense, Member, WithId } from '@app/shared';
-import { formatDate, formatPaise, formatTime, receiptFilePaths, usableParts } from '@app/shared';
+import { categoryInfo, formatDate, formatPaise, formatTime, receiptFilePaths, usableParts } from '@app/shared';
 import { dayLabel, groupByDay, involvementOf, type Involvement } from './days.js';
 import { useDisplayDateFormat } from '../../stores/preferences.js';
 import { Link } from 'react-router';
@@ -85,6 +85,7 @@ export function ExpenseList({
               const parts = usableParts(expense);
               const thread = comments[expense.id] ?? [];
               const unsure = expense.unconfirmed === true;
+              const category = isSettlement ? null : categoryInfo(expense.category);
               const receiverId = isSettlement ? (expense.splits[0]?.memberId ?? '') : null;
               const title = isSettlement
                 ? `${whoIs(expense.paidBy)} paid ${receiverId === myMemberId ? 'you' : nameOf(receiverId ?? '')}`
@@ -138,6 +139,12 @@ export function ExpenseList({
                           )}
                         </p>
                         <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-slate-400">
+                          {category?.value && (
+                            <span className="inline-flex items-center gap-1 text-slate-500">
+                              <span aria-hidden>{category.emoji}</span>
+                              {category.label}
+                            </span>
+                          )}
                           {time && <span>{time}</span>}
                           {thread.length > 0 && (
                             <span className="inline-flex items-center gap-0.5" aria-label={`${thread.length} comments`}>

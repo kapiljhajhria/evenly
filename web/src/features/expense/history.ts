@@ -70,7 +70,7 @@ function valueAfter(
 }
 
 /** The order a person reads an expense in. */
-const ORDER = ['description', 'amountPaise', 'paidBy', 'date', 'time', 'splitType', 'splits', 'parts', 'note', 'location', 'unconfirmed'];
+const ORDER = ['description', 'category', 'amountPaise', 'paidBy', 'date', 'time', 'splitType', 'splits', 'parts', 'note', 'location', 'unconfirmed'];
 const fieldOrder = (field: string): number => {
   const at = ORDER.indexOf(field);
   return at === -1 ? ORDER.length : at;

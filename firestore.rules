@@ -263,9 +263,20 @@ service cloud.firestore {
               && data.parts.size() <= 20);
       }
 
+      // What an expense was for: a preset id or a custom name
+      // (MAX_CATEGORY_LENGTH in shared/src/category.ts). Expenses only.
+      function validCategory(data) {
+        return data.get('category', null) == null
+          || (data.type == 'expense'
+              && data.category is string
+              && data.category.size() > 0
+              && data.category.size() <= 30);
+      }
+
       function wellFormed() {
         return validNote()
           && validParts(request.resource.data)
+          && validCategory(request.resource.data)
           // "Not sure who paid — please check". Optional like every
           // post-launch field: absent means confirmed.
           && request.resource.data.get('unconfirmed', false) is bool

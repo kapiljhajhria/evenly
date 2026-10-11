@@ -59,6 +59,39 @@ export function useExpenses(groupId: string | undefined): ExpensesState {
   return { ...state, loadMore };
 }
 
+/**
+ * Every expense in the group, live, unpaginated — totals need all of them.
+ * Only the insights page uses it; friend-group volumes keep it cheap.
+ */
+export function useAllExpenses(groupId: string | undefined): {
+  expenses: WithId<Expense<Timestamp>>[];
+  loading: boolean;
+  error: Error | null;
+} {
+  const [state, setState] = useState<{ expenses: WithId<Expense<Timestamp>>[]; loading: boolean; error: Error | null }>(
+    { expenses: [], loading: true, error: null },
+  );
+
+  useEffect(() => {
+    if (!groupId) {
+      setState({ expenses: [], loading: false, error: null });
+      return;
+    }
+    return onSnapshot(
+      query(expensesCol(groupId), orderBy('date', 'desc'), orderBy('createdAt', 'desc')),
+      (snap) =>
+        setState({
+          expenses: snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Expense<Timestamp>) })),
+          loading: false,
+          error: null,
+        }),
+      (error) => setState({ expenses: [], loading: false, error }),
+    );
+  }, [groupId]);
+
+  return state;
+}
+
 export interface ExpenseState {
   expense: WithId<Expense<Timestamp>> | null;
   loading: boolean;
