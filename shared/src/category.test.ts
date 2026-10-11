@@ -36,7 +36,7 @@ describe('normalizeCategory', () => {
 
 describe('categoryInfo', () => {
   it('shows presets with their emoji', () => {
-    expect(categoryInfo('stay')).toMatchObject({ key: 'stay', label: 'Stay', emoji: '🏨', preset: true });
+    expect(categoryInfo('stay')).toMatchObject({ key: 'stay', label: 'Stay', emoji: '🛏️', preset: true });
   });
 
   it('uses a leading emoji on a custom name as its icon', () => {

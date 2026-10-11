@@ -21,7 +21,7 @@ export const PRESET_CATEGORIES: readonly PresetCategory[] = [
   { id: 'snacks', label: 'Snacks', emoji: '🍿' },
   { id: 'groceries', label: 'Groceries', emoji: '🛒' },
   { id: 'drinks', label: 'Drinks', emoji: '🍻' },
-  { id: 'stay', label: 'Stay', emoji: '🏨' },
+  { id: 'stay', label: 'Stay', emoji: '🛏️' },
   { id: 'travel', label: 'Travel', emoji: '✈️' },
   { id: 'transport', label: 'Cabs & local', emoji: '🚕' },
   { id: 'fuel', label: 'Fuel', emoji: '⛽' },
