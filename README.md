@@ -41,7 +41,7 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (249 tests, no emulator)
+npm test                 # pure logic in shared/ and web/ (263 tests, no emulator)
 npm run test:rules       # Firestore + Storage rules vs the emulators (180 tests)
 npm run test:integration # functions + real client modules (96 tests)
 npm run test:all         # all of the above
@@ -225,6 +225,13 @@ Add expense starts from your last expense's split in that group — type,
 who was left out, portions or percents (amounts: only who was in) — kept
 in localStorage per person and group (`features/expense/lastSplit.ts`),
 ahead of the group default. Settlements never change it.
+
+The group's list is grouped by day (Today / Yesterday / weekday, with the
+day's spending) and each card says what it means for you — lent, owe,
+paid, got (`features/expense/days.ts`). Edit history shows each change as
+old → new: history stores only the "before" side, so the "after" is the next
+newer edit's "before", or the expense as it is now
+(`features/expense/history.ts`), ending with who added it.
 
 Next, per the brief §9: close flow + `autoClose` UI, PWA polish, then FCM
 push in v1.5.

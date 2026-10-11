@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import type { Timestamp } from 'firebase/firestore';
-import type { DateFormat, Member, WithId } from '@app/shared';
-import { formatDate, formatDateTimeOf, formatPaise, formatTime, isDeleted, usableParts } from '@app/shared';
+import { formatDateTimeOf, formatPaise, isDeleted, usableParts } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useDisplayDateFormat } from '../../stores/preferences.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
-import { useComments, useExpense, useExpenseHistory } from '../../hooks/useExpenses.js';
+import { useComments, useExpense } from '../../hooks/useExpenses.js';
+import { ExpenseHistory } from './ExpenseHistory.js';
 import { expensePermissions, restoreExpense, updateExpense } from './api.js';
 import { ExpenseForm } from './ExpenseForm.js';
 import { ReceiptSection } from '../receipt/ReceiptSection.js';
@@ -77,7 +76,7 @@ export function EditExpensePage() {
           summary={`${expense.description} · ${formatPaise(expense.amountPaise)} · ${byId[expense.paidBy]?.name ?? 'Someone'} paid`}
         />
         {discussion}
-        <ExpenseHistory groupId={groupId} expenseId={expenseId} membersById={byId} />
+        <ExpenseHistory groupId={groupId} expense={expense} membersById={byId} />
       </AppShell>
     );
   }
@@ -101,7 +100,7 @@ export function EditExpensePage() {
         )}
         {discussion}
         <ReceiptSection groupId={groupId} expense={expense} canManage={canManageReceipt} />
-        <ExpenseHistory groupId={groupId} expenseId={expenseId} membersById={byId} />
+        <ExpenseHistory groupId={groupId} expense={expense} membersById={byId} />
       </AppShell>
     );
   }
@@ -159,98 +158,8 @@ export function EditExpensePage() {
 
       {discussion}
       <ReceiptSection groupId={groupId} expense={expense} canManage={canManageReceipt} />
-      <ExpenseHistory groupId={groupId} expenseId={expenseId} membersById={byId} />
+      <ExpenseHistory groupId={groupId} expense={expense} membersById={byId} />
     </AppShell>
-  );
-}
-
-const FIELD_LABELS: Record<string, string> = {
-  description: 'Description',
-  note: 'Notes',
-  date: 'Date',
-  time: 'Time',
-  location: 'Location',
-  amountPaise: 'Amount',
-  paidBy: 'Paid by',
-  splitType: 'Split type',
-  splits: 'Split',
-  parts: 'Transfers',
-  unconfirmed: 'Status',
-};
-
-function describeValue(
-  field: string,
-  value: unknown,
-  membersById: Record<string, WithId<Member<Timestamp>>>,
-  dateFormat: DateFormat,
-): string {
-  if (field === 'unconfirmed') return value === true ? 'not confirmed' : 'confirmed';
-  // Before any other check: a null breakdown reads "one amount", not "empty".
-  if (field === 'parts') {
-    const count = Array.isArray(value) ? value.length : 0;
-    return count > 0 ? `${count} transfers` : 'one amount';
-  }
-  if (value === null || value === undefined || value === '') return 'empty';
-  if (field === 'amountPaise') return formatPaise(value as number);
-  if (field === 'paidBy') return membersById[value as string]?.name ?? 'someone';
-  if (field === 'time') return formatTime(value as string) ?? String(value);
-  if (field === 'date') return formatDate(String(value), dateFormat);
-  if (field === 'location') return 'a location';
-  if (field === 'splits') return 'the split';
-  return String(value);
-}
-
-/** Any member can read this — visible edits are the point of keeping history. */
-function ExpenseHistory({
-  groupId,
-  expenseId,
-  membersById,
-}: {
-  groupId: string;
-  expenseId: string;
-  membersById: Record<string, WithId<Member<Timestamp>>>;
-}) {
-  const { entries, loading } = useExpenseHistory(groupId, expenseId);
-  const dateFormat = useDisplayDateFormat();
-  if (loading || entries.length === 0) return null;
-
-  const nameOfUid = (uid: string): string =>
-    Object.values(membersById).find((m) => m.uid === uid)?.name ?? 'Someone';
-
-  return (
-    <Card className="space-y-3">
-      <div>
-        <p className="font-semibold">Edit history</p>
-        <p className="text-sm text-slate-500">Every change is recorded and visible to the group.</p>
-      </div>
-      <ul className="space-y-3 text-sm">
-        {entries.map((entry) => (
-          <li key={entry.id} className="border-l-2 border-slate-200 pl-3">
-            <p className="text-slate-600">
-              {nameOfUid(entry.editedBy)} ·{' '}
-              <span className="text-slate-400">
-                {entry.editedAt ? formatDateTimeOf(entry.editedAt.toDate(), dateFormat) : 'just now'}
-              </span>
-            </p>
-            <ul className="mt-1 space-y-0.5 text-xs text-slate-500">
-              {'deleted' in (entry.before as Record<string, unknown>) ? (
-                // A delete or restore is its own entry: say it plainly.
-                <li className={(entry.before as { deleted?: boolean }).deleted ? 'text-emerald-700' : 'text-red-700'}>
-                  {(entry.before as { deleted?: boolean }).deleted ? 'Restored this entry' : 'Deleted this entry'}
-                </li>
-              ) : (
-                Object.entries(entry.before as Record<string, unknown>).map(([field, value]) => (
-                <li key={field}>
-                  {FIELD_LABELS[field] ?? field} was{' '}
-                  <span className="text-slate-700">{describeValue(field, value, membersById, dateFormat)}</span>
-                </li>
-                ))
-              )}
-            </ul>
-          </li>
-        ))}
-      </ul>
-    </Card>
   );
 }
 
