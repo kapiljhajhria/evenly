@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayLabel, groupByDay, involvementOf } from './days.js';
+import { dayLabel, groupByDay, involvementOf, isPersonal } from './days.js';
 
 describe('groupByDay', () => {
   it('makes one section per date, in order, totalling spending but not payments', () => {
@@ -57,10 +57,28 @@ describe('involvementOf', () => {
     expect(involvementOf(expense, null)).toEqual({ kind: 'none' });
   });
 
-  it('is your own spend when you paid and the whole share is yours', () => {
+  it('marks a personal expense as yours, or as just that person for everyone else', () => {
     const own = { ...expense, splits: [{ memberId: 'a', owedPaise: 30000 }] };
+    expect(isPersonal(own)).toBe(true);
     expect(involvementOf(own, 'a')).toEqual({ kind: 'own', paise: 30000 });
-    expect(involvementOf(own, 'b')).toEqual({ kind: 'none' });
+    expect(involvementOf(own, 'b')).toEqual({ kind: 'theirs', memberId: 'a', paise: 30000 });
+    expect(involvementOf(own, null)).toEqual({ kind: 'theirs', memberId: 'a', paise: 30000 });
+  });
+
+  it('ignores zero-share rows when deciding it is personal', () => {
+    const own = { ...expense, splits: [{ memberId: 'a', owedPaise: 30000 }, { memberId: 'b', owedPaise: 0 }] };
+    expect(isPersonal(own)).toBe(true);
+  });
+
+  it('keeps "not involved" for an expense between two other people', () => {
+    const between = { ...expense, splits: [{ memberId: 'b', owedPaise: 30000 }] };
+    expect(isPersonal(between)).toBe(false);
+    expect(involvementOf(between, 'c')).toEqual({ kind: 'none' });
+    expect(isPersonal(expense)).toBe(false);
+  });
+
+  it('never treats a payment as personal', () => {
+    expect(isPersonal({ type: 'settlement', paidBy: 'a', amountPaise: 100, splits: [{ memberId: 'a', owedPaise: 100 }] })).toBe(false);
   });
 
   it('describes payments from either side', () => {

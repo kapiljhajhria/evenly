@@ -46,15 +46,31 @@ export type Involvement =
   | { kind: 'owe'; paise: number }
   | { kind: 'paid'; paise: number }
   | { kind: 'received'; paise: number }
-  /** You paid, and it was all your own share: moves no balance, but it is yours. */
+  /** Your personal expense: you paid, and it was all your own share. */
   | { kind: 'own'; paise: number }
+  /** Someone else's personal expense — "just Kapil", not "not involved". */
+  | { kind: 'theirs'; memberId: string; paise: number }
   | { kind: 'none' };
 
+type EntryLike = { type: string; paidBy: string; amountPaise: number; splits: { memberId: string; owedPaise: number }[] };
+
+/**
+ * One person paid, for themselves only. It moves no balance but still counts
+ * as spending, so the list marks it — nobody should mistake it for a shared
+ * cost.
+ */
+export function isPersonal(entry: EntryLike): boolean {
+  const owing = entry.splits.filter((s) => s.owedPaise > 0);
+  return entry.type === 'expense' && owing.length === 1 && owing[0]!.memberId === entry.paidBy;
+}
+
 /** What an entry means for you, Splitwise-style. */
-export function involvementOf(
-  entry: { type: string; paidBy: string; amountPaise: number; splits: { memberId: string; owedPaise: number }[] },
-  myMemberId: string | null,
-): Involvement {
+export function involvementOf(entry: EntryLike, myMemberId: string | null): Involvement {
+  if (isPersonal(entry)) {
+    return entry.paidBy === myMemberId
+      ? { kind: 'own', paise: entry.amountPaise }
+      : { kind: 'theirs', memberId: entry.paidBy, paise: entry.amountPaise };
+  }
   if (!myMemberId) return { kind: 'none' };
   const mine = entry.splits.find((s) => s.memberId === myMemberId)?.owedPaise ?? 0;
   if (entry.type === 'settlement') {
@@ -64,7 +80,7 @@ export function involvementOf(
   }
   if (entry.paidBy === myMemberId) {
     const lent = entry.amountPaise - mine;
-    return lent > 0 ? { kind: 'lent', paise: lent } : { kind: 'own', paise: entry.amountPaise };
+    return lent > 0 ? { kind: 'lent', paise: lent } : { kind: 'none' };
   }
   return mine > 0 ? { kind: 'owe', paise: mine } : { kind: 'none' };
 }

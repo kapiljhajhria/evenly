@@ -139,6 +139,11 @@ export function ExpenseList({
                           )}
                         </p>
                         <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-slate-400">
+                          {(involvement.kind === 'own' || involvement.kind === 'theirs') && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 font-medium text-slate-600">
+                              <span aria-hidden>👤</span> Personal
+                            </span>
+                          )}
                           {category?.value && (
                             <span className="inline-flex items-center gap-1 text-slate-500">
                               <span aria-hidden>{category.emoji}</span>
@@ -172,7 +177,7 @@ export function ExpenseList({
                           )}
                         </p>
                       </div>
-                      <YourPart involvement={involvement} />
+                      <YourPart involvement={involvement} nameOf={nameOf} />
                       {hasDetail && (
                         <svg
                           viewBox="0 0 24 24"
@@ -310,7 +315,7 @@ export function ExpenseList({
   );
 }
 
-const PART_STYLE: Record<Exclude<Involvement['kind'], 'none'>, { label: string; tone: string }> = {
+const PART_STYLE: Record<Exclude<Involvement['kind'], 'none' | 'theirs'>, { label: string; tone: string }> = {
   lent: { label: 'you lent', tone: 'text-emerald-600' },
   owe: { label: 'you owe', tone: 'text-orange-600' },
   paid: { label: 'you paid', tone: 'text-slate-700' },
@@ -319,9 +324,18 @@ const PART_STYLE: Record<Exclude<Involvement['kind'], 'none'>, { label: string; 
 };
 
 /** The right-hand column: what this entry means for you. */
-function YourPart({ involvement }: { involvement: Involvement }) {
+function YourPart({ involvement, nameOf }: { involvement: Involvement; nameOf: (memberId: string) => string }) {
   if (involvement.kind === 'none') {
     return <span className="shrink-0 self-center text-xs text-slate-400">not involved</span>;
+  }
+  if (involvement.kind === 'theirs') {
+    // Someone's personal spend: named, and muted — it moves nothing for you.
+    return (
+      <div className="max-w-28 shrink-0 text-right text-slate-400">
+        <p className="truncate text-xs">just {nameOf(involvement.memberId)}</p>
+        <p className="tabular font-display text-[1.05rem] font-semibold">{formatPaise(involvement.paise)}</p>
+      </div>
+    );
   }
   const { label, tone } = PART_STYLE[involvement.kind];
   return (
