@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { SplitInput, SplitType, WithId, Member } from '@app/shared';
 import {
   basisPointsToPercentString,
@@ -62,22 +62,13 @@ export function SplitEditor({
     onChange(next);
   };
 
-  const setInput = (memberId: string, raw: string) => {
-    const parsed = splitType === 'percent' ? parsePercentToBasisPoints(raw) : parseRupeesToPaise(raw);
-    if (splitType === 'portions') {
-      const portions = Number(raw.replace(/\D/g, '') || '0');
-      onChange({ ...value, [memberId]: portions });
-      return;
-    }
-    if (parsed === null) return;
-    onChange({ ...value, [memberId]: parsed });
-  };
+  const format = FORMATS[splitType];
 
-  const rawFor = (memberId: string): string => {
-    const input = value[memberId] ?? 0;
-    if (splitType === 'portions') return String(input);
-    if (splitType === 'percent') return basisPointsToPercentString(input);
-    return paiseToDecimalString(input);
+  // A new split type starts from its own sensible values, never the last
+  // type's numbers: 1 portion read as 0.01 rupees, ₹500 as 50000%.
+  const changeType = (type: SplitType) => {
+    onSplitTypeChange(type);
+    if (type !== splitType) onChange(startingValues(type, Object.keys(value), amountPaise));
   };
 
   return (
@@ -89,7 +80,7 @@ export function SplitEditor({
             type="button"
             role="tab"
             aria-selected={splitType === type}
-            onClick={() => onSplitTypeChange(type)}
+            onClick={() => changeType(type)}
             className={`min-h-9 flex-1 rounded-lg text-sm font-medium transition ${
               splitType === type ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
             }`}
@@ -123,12 +114,13 @@ export function SplitEditor({
               </span>
 
               {isIn && splitType !== 'equal' && (
-                <Input
-                  inputMode="decimal"
-                  value={rawFor(member.id)}
-                  onChange={(e) => setInput(member.id, e.target.value)}
+                <SplitInputCell
+                  // Remount on a type switch: "5.00" rupees is not a percent.
+                  key={splitType}
+                  value={value[member.id] ?? 0}
+                  format={format}
+                  onValue={(next) => onChange({ ...value, [member.id]: next })}
                   aria-label={`${SPLIT_LABELS[splitType]} for ${member.name}`}
-                  className="w-24 text-right"
                 />
               )}
 
@@ -142,5 +134,101 @@ export function SplitEditor({
 
       {error && <p className="text-sm text-red-600">{error}</p>}
     </section>
+  );
+}
+
+interface CellFormat {
+  /** Stored value -> what the box shows when the person is not typing. */
+  show: (value: number) => string;
+  /** What they typed -> stored value; null for text that is not a number. */
+  parse: (text: string) => number | null;
+  inputMode: 'decimal' | 'numeric';
+}
+
+/** Zero shows as an empty box, so tapping in and typing just works. */
+const blankZero = (show: (value: number) => string) => (value: number) => (value === 0 ? '' : show(value));
+
+const FORMATS: Record<SplitType, CellFormat> = {
+  amount: { show: blankZero(paiseToDecimalString), parse: parseRupeesToPaise, inputMode: 'decimal' },
+  percent: { show: blankZero(basisPointsToPercentString), parse: parsePercentToBasisPoints, inputMode: 'decimal' },
+  portions: {
+    show: String,
+    parse: (text) => (/^\d+$/.test(text.trim()) ? Number(text.trim()) : null),
+    inputMode: 'numeric',
+  },
+  equal: { show: String, parse: () => null, inputMode: 'numeric' },
+};
+
+/**
+ * Amounts start as everyone's equal share and percents as an equal split of
+ * 100%, so the split is already valid and only needs adjusting; portions
+ * start at 1 each.
+ */
+function startingValues(type: SplitType, memberIds: string[], amountPaise: number): Record<string, number> {
+  const evenly = (total: number) => {
+    if (total <= 0 || memberIds.length === 0) return Object.fromEntries(memberIds.map((id) => [id, 0]));
+    const inputs = memberIds.map((memberId) => ({ memberId, input: 1 }));
+    return Object.fromEntries(computeSplits(total, 'equal', inputs).map((s) => [s.memberId, s.owedPaise]));
+  };
+  if (type === 'amount') return evenly(amountPaise);
+  // Basis points: 10000 is 100%, shared out exactly like paise.
+  if (type === 'percent') return evenly(10_000);
+  return Object.fromEntries(memberIds.map((id) => [id, 1]));
+}
+
+/** Empty, or a lone ".", while typing: counts as 0 rather than being refused. */
+const isBlank = (text: string): boolean => /^\s*\.?\s*$/.test(text);
+
+function parseTyped(format: CellFormat, text: string): number | null {
+  if (isBlank(text)) return 0;
+  const parsed = format.parse(text);
+  return parsed !== null && parsed >= 0 ? parsed : null;
+}
+
+/**
+ * One member's amount, percent or portions box. It keeps the text exactly
+ * as typed: re-deriving it from the stored value on every keystroke turned
+ * "5" into "5.00" and threw the cursor past the paise. It is only tidied
+ * ("5" -> "5.00") on blur, or replaced when the value changes from outside.
+ */
+function SplitInputCell({
+  value,
+  format,
+  onValue,
+  'aria-label': ariaLabel,
+}: {
+  value: number;
+  format: CellFormat;
+  onValue: (value: number) => void;
+  'aria-label': string;
+}) {
+  const [text, setText] = useState(() => format.show(value));
+
+  useEffect(() => {
+    setText((current) => (parseTyped(format, current) === value ? current : format.show(value)));
+  }, [value, format]);
+
+  return (
+    <Input
+      inputMode={format.inputMode}
+      value={text}
+      onChange={(event) => {
+        const next = event.target.value;
+        const parsed = parseTyped(format, next);
+        // Not a number (a letter, a third decimal): leave the box as it was,
+        // and the cursor where it was rather than at the end.
+        if (parsed === null) {
+          const input = event.target;
+          const at = Math.max(0, (input.selectionStart ?? next.length) - (next.length - text.length));
+          requestAnimationFrame(() => input.setSelectionRange(at, at));
+          return;
+        }
+        setText(next);
+        if (parsed !== value) onValue(parsed);
+      }}
+      onBlur={() => setText(format.show(value))}
+      aria-label={ariaLabel}
+      className="w-24 text-right"
+    />
   );
 }
