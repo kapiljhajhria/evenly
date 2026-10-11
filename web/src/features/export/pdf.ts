@@ -1,9 +1,17 @@
 import { getDocs, orderBy, query, type Timestamp } from 'firebase/firestore';
 import { getDownloadURL, ref } from 'firebase/storage';
 import type { BalanceMap, Expense } from '@app/shared';
-import { storage } from '../../lib/firebase.js';
+import { auth, storage } from '../../lib/firebase.js';
 import { expensesCol } from '../../lib/paths.js';
-import { buildExport, exportFileName, pdfMoney, zipEntryNames, zipFileName, type ExportModel } from './model.js';
+import {
+  buildExport,
+  exportFileName,
+  pdfMoney,
+  zipEntryNames,
+  zipFileName,
+  type ExportModel,
+  type InsightsSection,
+} from './model.js';
 import { insertionIndices, receiptKind } from '../receipt/kind.js';
 import { usePreferences } from '../../stores/preferences.js';
 
@@ -135,6 +143,8 @@ async function buildGroupPdf(
     generatedAt,
     dateFormat: usePreferences.getState().displayDateFormat,
     rupeeSign: fonts !== null,
+    // Whoever exports gets their own insights alongside the group's.
+    myMemberId: args.members.find((m) => m.uid && m.uid === auth.currentUser?.uid)?.id ?? null,
   });
 
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -341,6 +351,10 @@ function writeSummary(
     });
   }
 
+  for (const section of [model.groupInsights, model.myInsights]) {
+    if (section) writeInsights(doc, autoTable, section, lastY, TABLE_STYLE);
+  }
+
   autoTable(doc, {
     ...TABLE_STYLE,
     startY: lastY() + 16,
@@ -364,6 +378,66 @@ function writeSummary(
       columnStyles: { 0: { cellWidth: 62 }, 2: { cellWidth: 70, halign: 'right' }, 3: { cellWidth: 120 } },
     });
   }
+}
+
+/** A heading and summary line, then the category, member and day tables. */
+function writeInsights(
+  doc: Doc,
+  autoTable: AutoTable,
+  section: InsightsSection,
+  lastY: () => number,
+  tableStyle: typeof BASE_TABLE_STYLE,
+): void {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let y = lastY() + 32;
+  // Keep the heading with at least the start of its first table.
+  if (y + 90 > pageHeight - MARGIN) {
+    doc.addPage();
+    y = MARGIN + 10;
+  }
+  doc.setFontSize(14);
+  doc.setTextColor(15, 23, 42);
+  doc.text(section.heading, MARGIN, y);
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  const summary = doc.splitTextToSize(section.summary, pageWidth - MARGIN * 2) as string[];
+  doc.text(summary, MARGIN, y + 15);
+  const startY = y + 15 + summary.length * 11 + 4;
+
+  const right = { halign: 'right' as const };
+  // Column headings follow their numbers to the right.
+  const alignHead = (columns: number[]) => ({
+    didParseCell: (data: { section: string; column: { index: number }; cell: { styles: { halign: string } } }) => {
+      if (data.section === 'head' && columns.includes(data.column.index)) data.cell.styles.halign = 'right';
+    },
+  });
+  autoTable(doc, {
+    ...tableStyle,
+    startY,
+    head: [['By category', 'Amount', 'Share']],
+    body: section.categoryRows,
+    columnStyles: { 1: { cellWidth: 90, ...right }, 2: { cellWidth: 60, ...right } },
+    ...alignHead([1, 2]),
+  });
+  if (section.memberRows.length > 0) {
+    autoTable(doc, {
+      ...tableStyle,
+      startY: lastY() + 12,
+      head: [['By member', 'Share of the bills', 'Paid']],
+      body: section.memberRows,
+      columnStyles: { 1: { cellWidth: 110, ...right }, 2: { cellWidth: 90, ...right } },
+      ...alignHead([1, 2]),
+    });
+  }
+  autoTable(doc, {
+    ...tableStyle,
+    startY: lastY() + 12,
+    head: [['By day', 'Amount', 'Expenses', 'Categories']],
+    body: section.dayRows,
+    columnStyles: { 0: { cellWidth: 70 }, 1: { cellWidth: 90, ...right }, 2: { cellWidth: 55, ...right } },
+    ...alignHead([1, 2]),
+  });
 }
 
 function addPageNumbers(doc: Doc, pageWidth: number, pageHeight: number): void {

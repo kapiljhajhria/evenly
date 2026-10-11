@@ -300,3 +300,72 @@ describe('zip entries', () => {
     expect(zipFileName('Goa Trip', new Date(2026, 9, 10))).toBe('evenly-goa-trip-2026-10-10.zip');
   });
 });
+
+describe('buildExport — insights', () => {
+  const trip = input({
+    expenses: [
+      expense({ id: 'dinner', category: 'food', date: '2026-08-22' }),
+      expense({
+        id: 'hotel',
+        description: 'Hotel',
+        category: 'stay',
+        date: '2026-08-23',
+        amountPaise: 100000,
+        paidBy: 'm-b',
+        splits: [
+          { memberId: 'm-a', input: 1, owedPaise: 50000 },
+          { memberId: 'm-b', input: 1, owedPaise: 50000 },
+        ],
+      }),
+      expense({
+        id: 'pay',
+        type: 'settlement',
+        description: 'Settled up',
+        amountPaise: 5000,
+        paidBy: 'm-b',
+        splits: [{ memberId: 'm-a', input: 5000, owedPaise: 5000 }],
+      }),
+      expense({ id: 'gone', amountPaise: 99999, deletedBy: 'u1', deletedAtMs: 1 }),
+    ],
+    myMemberId: 'm-b',
+  });
+
+  it('adds group insights by category, member and day, leaving out payments and deleted entries', () => {
+    const { groupInsights } = buildExport(trip);
+    expect(groupInsights?.summary).toBe(
+      'Spent Rs 1,300.01 · 2 expenses 22-aug-26 – 23-aug-26 (2 days) · Rs 650.01 a day on average',
+    );
+    expect(groupInsights?.categoryRows).toEqual([
+      ['Stay', 'Rs 1,000.00', '77%'],
+      ['Food', 'Rs 300.01', '23%'],
+    ]);
+    expect(groupInsights?.memberRows).toEqual([
+      ['Asha', 'Rs 650.01', 'Rs 300.01'],
+      ['Bilal', 'Rs 650.00', 'Rs 1,000.00'],
+    ]);
+    expect(groupInsights?.dayRows).toEqual([
+      ['22-aug-26', 'Rs 300.01', '1', 'Food'],
+      ['23-aug-26', 'Rs 1,000.00', '1', 'Stay'],
+    ]);
+  });
+
+  it("adds the exporter's own share and what they paid", () => {
+    const { myInsights } = buildExport(trip);
+    expect(myInsights?.heading).toBe('Your insights — Bilal');
+    expect(myInsights?.summary).toContain('Share Rs 650.00 · paid Rs 1,000.00 · 2 expenses');
+    expect(myInsights?.memberRows).toEqual([]);
+    expect(myInsights?.categoryRows.map((row) => row[0])).toEqual(['Stay', 'Food']);
+  });
+
+  it('has no personal section for someone outside the group, and none at all before anything is spent', () => {
+    expect(buildExport({ ...trip, myMemberId: 'not-a-member' }).myInsights).toBeNull();
+    const empty = buildExport(input({ expenses: [] }));
+    expect(empty.groupInsights).toBeNull();
+    expect(empty.myInsights).toBeNull();
+  });
+
+  it('shows the category beside the description in the ledger', () => {
+    const rows = buildExport(trip).ledgerRows;
+    expect(rows[0]![1]).toBe('Dinner · Food');
+  });
+});

@@ -1,6 +1,8 @@
 import type { BalanceMap, Expense } from '@app/shared';
 import type { DateFormat } from '@app/shared';
 import {
+  categoryInfo,
+  computeInsights,
   DEFAULT_DISPLAY_DATE_FORMAT,
   formatDate,
   formatDateTimeOf,
@@ -21,7 +23,7 @@ export type ExportExpense = Pick<
   Expense<unknown>,
   'type' | 'description' | 'note' | 'date' | 'time' | 'amountPaise' | 'paidBy' | 'splits' | 'receiptPath' | 'parts' | 'unconfirmed' | 'deletedBy'
 > &
-  Partial<Pick<Expense<unknown>, 'receiptStatus' | 'receipts'>> & {
+  Partial<Pick<Expense<unknown>, 'receiptStatus' | 'receipts' | 'category'>> & {
   id: string;
   /** Set when soft-deleted. Millis, so the model stays free of Timestamp. */
   deletedAtMs?: number | null;
@@ -43,6 +45,24 @@ export interface ExportInput {
   dateFormat?: DateFormat;
   /** True when the PDF has a font with the ₹ glyph (see pdfMoney). */
   rupeeSign?: boolean;
+  /** The exporter's slot: adds a "Your insights" section. Null when they have none. */
+  myMemberId?: string | null;
+}
+
+/**
+ * One insights section: the same figures as the in-app Insights page, as
+ * tables. Category names only — the PDF font has no emoji.
+ */
+export interface InsightsSection {
+  heading: string;
+  /** One line under the heading: total, count, date range, average. */
+  summary: string;
+  /** [category, amount, share of total]. Largest first, uncategorized last. */
+  categoryRows: [string, string, string][];
+  /** [member, share, paid]. Group section only; empty otherwise. */
+  memberRows: [string, string, string][];
+  /** [date, amount, expenses, categories]. Oldest first. */
+  dayRows: [string, string, string, string][];
 }
 
 export interface ExportReceipt {
@@ -72,6 +92,10 @@ export interface ExportModel {
   receipts: ExportReceipt[];
   /** [date, description, amount, deleted by + when]. Not counted anywhere. */
   deletedRows: [string, string, string, string][];
+  /** Null when nothing has been spent yet. */
+  groupInsights: InsightsSection | null;
+  /** The exporter's own share; null when they are not a member or had no share. */
+  myInsights: InsightsSection | null;
 }
 
 /**
@@ -105,6 +129,47 @@ function transferLines(expense: ExportExpense, money: (paise: number) => string)
   if (!parts) return '—';
   const lines = parts.map((part, i) => `${i + 1}. ${money(part.amountPaise)}${part.note ? ` ${part.note}` : ''}`);
   return [`${parts.length} transfers:`, ...lines].join('\n');
+}
+
+function insightsSection(
+  input: ExportInput,
+  memberId: string | null,
+  heading: string,
+  money: (paise: number) => string,
+  nameOf: (memberId: string) => string,
+  dateFormat: DateFormat,
+): InsightsSection | null {
+  const expenses = input.expenses.filter((e) => !e.deletedBy && !e.deletedAtMs);
+  const insights = computeInsights(expenses, input.members.map((m) => m.id), { memberId });
+  if (insights.count === 0) return null;
+
+  const percent = (paise: number) => `${Math.round((paise / insights.totalPaise) * 100)}%`;
+  const range =
+    insights.firstDate === insights.lastDate
+      ? `on ${pdfDate(insights.firstDate!, dateFormat)}`
+      : `${pdfDate(insights.firstDate!, dateFormat)} – ${pdfDate(insights.lastDate!, dateFormat)} (${insights.spanDays} days)`;
+  const perDay =
+    insights.spanDays > 1 ? ` · ${money(Math.round(insights.totalPaise / insights.spanDays))} a day on average` : '';
+  const what = memberId === null ? 'Spent' : 'Share';
+  const paid = memberId === null ? '' : ` · paid ${money(insights.paidPaise)}`;
+
+  return {
+    heading,
+    summary: `${what} ${money(insights.totalPaise)}${paid} · ${insights.count} expense${insights.count === 1 ? '' : 's'} ${range}${perDay}`,
+    categoryRows: insights.categories.map((c) => [c.label, money(c.paise), percent(c.paise)]),
+    memberRows:
+      memberId === null
+        ? insights.members
+            .filter((m) => m.sharePaise > 0 || m.paidPaise > 0)
+            .map((m) => [nameOf(m.memberId), money(m.sharePaise), money(m.paidPaise)])
+        : [],
+    dayRows: insights.days.map((d) => [
+      pdfDate(d.date, dateFormat),
+      money(d.paise),
+      String(d.count),
+      d.byCategory.map((c) => c.label).join(', '),
+    ]),
+  };
 }
 
 export function buildExport(input: ExportInput): ExportModel {
@@ -142,6 +207,8 @@ export function buildExport(input: ExportInput): ExportModel {
       (isSettlement
         ? `${payer} paid ${nameOf(expense.splits[0]?.memberId ?? '')} (settlement)`
         : expense.description) + (expense.unconfirmed ? ' [NOT CONFIRMED]' : '');
+    const category = isSettlement ? null : categoryInfo(expense.category);
+    const described = category?.value ? `${description} · ${category.label}` : description;
     const time = formatTime(expense.time);
     const when = time ? `${pdfDate(expense.date, dateFormat)}\n${time}` : pdfDate(expense.date, dateFormat);
 
@@ -150,7 +217,7 @@ export function buildExport(input: ExportInput): ExportModel {
 
     ledgerRows.push([
       when,
-      expense.note ? `${description}\n${expense.note}` : description,
+      expense.note ? `${described}\n${expense.note}` : described,
       payer,
       money(expense.amountPaise),
       isSettlement
@@ -193,6 +260,11 @@ export function buildExport(input: ExportInput): ExportModel {
     ledgerRows,
     receipts,
     deletedRows,
+    groupInsights: insightsSection(input, null, 'Group insights', money, nameOf, dateFormat),
+    myInsights:
+      input.myMemberId && names.has(input.myMemberId)
+        ? insightsSection(input, input.myMemberId, `Your insights — ${nameOf(input.myMemberId)}`, money, nameOf, dateFormat)
+        : null,
   };
 }
 
