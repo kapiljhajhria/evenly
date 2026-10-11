@@ -60,8 +60,8 @@ export function ExpenseList({
         <section key={day.date} aria-label={formatDate(day.date, dateFormat)} className="space-y-2">
           <div className="flex items-baseline justify-between gap-3 px-1">
             <h3 className="text-lg font-bold tracking-tight text-slate-900">
-              {dayLabel(day.date)}
-              <span className="ml-2 text-sm font-medium text-slate-400">{formatDate(day.date, dateFormat)}</span>
+              {formatDate(day.date, dateFormat)}
+              <span className="ml-2 text-sm font-medium text-slate-400">{dayLabel(day.date)}</span>
             </h3>
             {day.spentPaise > 0 && (
               <span className="tabular shrink-0 text-xs text-slate-400">{formatPaise(day.spentPaise)} spent</span>
