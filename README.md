@@ -41,7 +41,7 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (241 tests, no emulator)
+npm test                 # pure logic in shared/ and web/ (249 tests, no emulator)
 npm run test:rules       # Firestore + Storage rules vs the emulators (180 tests)
 npm run test:integration # functions + real client modules (96 tests)
 npm run test:all         # all of the above
@@ -220,6 +220,11 @@ Cyrillic, ₹ — `web/src/features/export/fonts`, OFL) so amounts read ₹ and
 accented names print; it falls back to Helvetica and "Rs" if the font cannot
 load. Scripts that need shaping (Devanagari) and emoji are still not
 supported — jsPDF cannot shape text.
+
+Add expense starts from your last expense's split in that group — type,
+who was left out, portions or percents (amounts: only who was in) — kept
+in localStorage per person and group (`features/expense/lastSplit.ts`),
+ahead of the group default. Settlements never change it.
 
 Next, per the brief §9: close flow + `autoClose` UI, PWA polish, then FCM
 push in v1.5.

@@ -3,6 +3,7 @@ import { useAuth } from '../../hooks/useAuth.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { addExpense } from './api.js';
 import { ExpenseForm } from './ExpenseForm.js';
+import { loadLastSplit, restoreSplit, saveLastSplit } from './lastSplit.js';
 import { pendingFor, queuePicked } from '../receipt/queue.js';
 import { AppShell } from '../../components/Layout.js';
 import { FullPageSpinner } from '../../components/ui.js';
@@ -19,6 +20,11 @@ export function AddExpensePage() {
 
   const myMemberId = members.find((m) => m.uid === user.uid)?.id ?? null;
   const defaults = group.defaultSplit;
+  const memberIds = members.map((m) => m.id);
+  // Your last expense here wins over the group default: it is how you
+  // actually split things. Kept on this device only.
+  const saved = loadLastSplit(user.uid, groupId);
+  const last = saved ? restoreSplit(saved, memberIds) : null;
 
   return (
     <AppShell title="Add expense" back={`/group/${groupId}`}>
@@ -28,8 +34,10 @@ export function AddExpensePage() {
         submitLabel="Save expense"
         withReceipt
         initial={{
-          // The group default pre-fills the split and stays editable.
-          ...(defaults?.entries.length
+          // Your last split here, else the group default; either stays editable.
+          ...(last
+            ? last
+            : defaults?.entries.length
             ? {
                 splitType: 'portions' as const,
                 splitValue: Object.fromEntries(defaults.entries.map((e) => [e.memberId, e.portions])),
@@ -54,6 +62,7 @@ export function AddExpensePage() {
             unconfirmed: values.unconfirmed,
           });
           await queuePicked(user.uid, groupId, expenseId, values.receipts, pending);
+          saveLastSplit(user.uid, groupId, values.splitType, values.splitInputs, memberIds);
           navigate(`/group/${groupId}`, { replace: true });
         }}
       />
