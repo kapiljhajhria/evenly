@@ -18,6 +18,7 @@ export interface PresetCategory {
 
 export const PRESET_CATEGORIES: readonly PresetCategory[] = [
   { id: 'food', label: 'Food', emoji: '🍽️' },
+  { id: 'snacks', label: 'Snacks', emoji: '🍿' },
   { id: 'groceries', label: 'Groceries', emoji: '🛒' },
   { id: 'drinks', label: 'Drinks', emoji: '🍻' },
   { id: 'stay', label: 'Stay', emoji: '🏨' },
