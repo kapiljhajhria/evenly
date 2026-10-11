@@ -18,7 +18,7 @@ const STEPS = [
   { title: 'Start a group', body: 'Name it, type in everyone’s names. No one needs an account yet.' },
   { title: 'Share one link', body: 'Drop the invite in WhatsApp. Each friend taps it and claims their own name.' },
   { title: 'Add as you go', body: 'Whoever paid adds it — split equally, by amount, percent or portions.' },
-  { title: 'Settle over UPI', body: 'Evenly works out the fewest payments. Pay as usual, record it in a tap.' },
+  { title: 'Settle over UPI', body: 'Evenly works out who pays whom. Pay as usual, record it in a tap.' },
 ];
 
 const FEATURES: { heading: string; items: [string, string][] }[] = [
@@ -47,7 +47,7 @@ const FEATURES: { heading: string; items: [string, string][] }[] = [
     heading: 'Money',
     items: [
       ['Live balances', 'Everyone sees the same numbers the moment anything changes.'],
-      ['Fewest payments to settle', 'Suggested transfers that clear the whole group.'],
+      ['Suggested settlements', 'A short list of transfers that clears the whole group.'],
       ['Record payments', 'Any payment between any two people, including part-payments.'],
       ['Transfer breakdowns', 'Paid in 11 UPI transfers? Record them as one payment with every part listed.'],
       ['Exact to the paisa', 'Integer paise everywhere; leftover paise are shared out by a fixed rule.'],
@@ -192,8 +192,8 @@ export function LandingPage() {
         <Spotlight
           flip
           eyebrow="Settling up"
-          title="Fewest payments. Then pay however you like."
-          body="Evenly nets everything out and suggests the smallest set of transfers that clears the group. Pay over UPI as you normally would, then record it — even if it went out in a dozen pieces."
+          title="Who pays whom, worked out. Pay however you like."
+          body="Evenly nets everything out and suggests a short list of transfers that clears the group. Pay over UPI as you normally would, then record it — even if it went out in a dozen pieces."
           points={['Suggested transfers for the whole group', 'Part-payments and multi-transfer breakdowns', 'Closes itself a week after everyone is square']}
           screen={{ src: '/screens/settle.webp', alt: 'The settle up screen with suggested payments' }}
         />
@@ -246,7 +246,7 @@ export function LandingPage() {
           <SectionHead
             eyebrow="Everything it does"
             title="The full list."
-            body="No premium tier, no ads, no limits on groups or expenses. This is all of it."
+            body="No premium tier, no ads. This is all of it."
           />
           <div className="mt-12 grid gap-x-12 gap-y-14 md:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map((group) => (

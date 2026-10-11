@@ -35,7 +35,7 @@ export function SignInPage() {
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1fr_minmax(0,36rem)]">
       {/* Laptop and up: the brand side. A phone goes straight to the form. */}
-      <aside className="relative hidden overflow-hidden bg-brand-600 p-12 text-white lg:flex lg:flex-col lg:justify-between">
+      <aside className="hidden bg-brand-600 p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <Link to="/about" className="w-fit text-white">
           <Logo />
         </Link>
@@ -56,10 +56,6 @@ export function SignInPage() {
         <Link to="/about" className="w-fit text-sm text-white/60 underline underline-offset-4 hover:text-white">
           See everything Evenly does
         </Link>
-        <svg aria-hidden viewBox="0 0 400 400" className="pointer-events-none absolute -right-24 -bottom-24 size-[28rem] opacity-[0.07]">
-          <rect x="40" y="130" width="320" height="50" rx="25" fill="currentColor" />
-          <rect x="40" y="220" width="320" height="50" rx="25" fill="currentColor" />
-        </svg>
       </aside>
 
       <div className="mx-auto flex w-full max-w-sm flex-col justify-center gap-6 p-6">
