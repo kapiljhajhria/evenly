@@ -1,6 +1,16 @@
 import type { BalanceMap, Expense } from '@app/shared';
 import type { DateFormat } from '@app/shared';
-import { DEFAULT_DISPLAY_DATE_FORMAT, formatDate, formatDateTimeOf, formatPaise, formatTime, netFor, suggestSettlements, usableParts } from '@app/shared';
+import {
+  DEFAULT_DISPLAY_DATE_FORMAT,
+  formatDate,
+  formatDateTimeOf,
+  formatPaise,
+  formatTime,
+  netFor,
+  receiptFilePaths,
+  suggestSettlements,
+  usableParts,
+} from '@app/shared';
 
 /**
  * Everything the PDF says, worked out without jsPDF or the DOM so it can be
@@ -10,7 +20,8 @@ import { DEFAULT_DISPLAY_DATE_FORMAT, formatDate, formatDateTimeOf, formatPaise,
 export type ExportExpense = Pick<
   Expense<unknown>,
   'type' | 'description' | 'note' | 'date' | 'time' | 'amountPaise' | 'paidBy' | 'splits' | 'receiptPath' | 'parts' | 'unconfirmed' | 'deletedBy'
-> & {
+> &
+  Partial<Pick<Expense<unknown>, 'receiptStatus' | 'receipts'>> & {
   id: string;
   /** Set when soft-deleted. Millis, so the model stays free of Timestamp. */
   deletedAtMs?: number | null;
@@ -37,7 +48,10 @@ export interface ExportInput {
 export interface ExportReceipt {
   path: string;
   caption: string;
-  /** `2026-08-22 Hotel Rs 12000.00` — the original file's name in the ZIP, before the extension. */
+  /**
+   * `2026-08-22 Hotel Rs 12000.00` — the original file's name in the ZIP,
+   * before the extension. ` - 2 of 3` added when the entry has several.
+   */
   fileStem: string;
 }
 
@@ -54,7 +68,7 @@ export interface ExportModel {
    * made in several transfers, the split column lists the transfers.
    */
   ledgerRows: [string, string, string, string, string][];
-  /** Same order as the ledger. Appended at the end, one per page. */
+  /** Same order as the ledger, then as attached. Appended at the end, one per page. */
   receipts: ExportReceipt[];
   /** [date, description, amount, deleted by + when]. Not counted anywhere. */
   deletedRows: [string, string, string, string][];
@@ -144,12 +158,16 @@ export function buildExport(input: ExportInput): ExportModel {
         : expense.splits.map((s) => `${nameOf(s.memberId)} ${money(s.owedPaise)}`).join('\n'),
     ]);
 
-    if (expense.receiptPath) {
+    const files = receiptFilePaths(expense);
+    for (const [index, path] of files.entries()) {
+      const nth = files.length > 1 ? ` - ${index + 1} of ${files.length}` : '';
       receipts.push({
-        path: expense.receiptPath,
-        caption: `${pdfDate(expense.date, dateFormat)} · ${description} · ${money(expense.amountPaise)} · paid by ${payer}`,
+        path,
+        caption:
+          `${pdfDate(expense.date, dateFormat)} · ${description} · ${money(expense.amountPaise)} · paid by ${payer}` +
+          (files.length > 1 ? ` · file ${index + 1} of ${files.length}` : ''),
         // ISO date first, so the files sort by date in any file manager.
-        fileStem: `${expense.date} ${description} ${pdfMoney(expense.amountPaise, false).replace(/,/g, '')}`,
+        fileStem: `${expense.date} ${description} ${pdfMoney(expense.amountPaise, false).replace(/,/g, '')}${nth}`,
       });
     }
   }

@@ -41,9 +41,9 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (228 tests, no emulator)
-npm run test:rules       # Firestore + Storage rules vs the emulators (166 tests)
-npm run test:integration # functions + real client modules (95 tests)
+npm test                 # pure logic in shared/ and web/ (241 tests, no emulator)
+npm run test:rules       # Firestore + Storage rules vs the emulators (180 tests)
+npm run test:integration # functions + real client modules (96 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
 ```
@@ -172,10 +172,16 @@ workspace-only version spec is unresolvable from the public registry.
 - **The payer owns the expense.** While their slot is unclaimed, whoever recorded
   it owns it; ownership transfers the moment the slot is claimed. The one
   exception is the receipt: the recorder may attach or replace it too.
-- **Receipts never block the save.** The expense is written with
-  `receiptStatus: 'pending'`, the encoded photo is parked in IndexedDB, and
-  `features/receipt/queue.ts` uploads it in the background. Clients cannot
-  delete Storage objects; clearing `receiptPath` makes `onExpenseWrite` do it.
+- **Receipts never block the save.** Up to 10 files per expense or payment.
+  Each is an entry in the optional `receipts` map (`shared/src/receipts.ts`),
+  written as `pending` with the expense, parked in IndexedDB, and uploaded in
+  the background by `features/receipt/queue.ts` — each with its own status.
+  Expenses from before keep their single `receiptPath`/`receiptStatus`
+  receipt, shown as file #1. Files are `receipts/{groupId}/{expenseId}_{id}.{ext}`
+  (`{expenseId}.{ext}` for the original). Rules only cap the map's size;
+  entries are validated where they are shown. Clients cannot delete Storage
+  objects; dropping a path from the doc makes `onExpenseWrite` delete it —
+  only ever that expense's own files.
   A receipt is a photo (`.webp`/`.jpg`, ≤1MB) or a PDF bill uploaded as-is
   (`.pdf`, ≤5MB); the kind is read off the path's extension, so there is no
   extra field. The group export merges PDF bills' own pages in with pdf-lib.
@@ -207,7 +213,8 @@ auto-close. The timing rules live in `shared/src/lifecycle.ts`. Install
 prompt (one tap on Android/desktop, Share-sheet steps on iPhone) on the home
 page and in Settings, and an honest offline mode. "Download all files (.zip)"
 next to the PDF: the same report plus every receipt as its original file
-(`receipts/<date> <description> Rs <amount>.<ext>`), built on the device
+(`receipts/<date> <description> Rs <amount>.<ext>`, `… - 2 of 3.<ext>` when an
+entry has several), built on the device
 with fflate. The PDF embeds Noto Sans (subset: Latin incl. accents, Greek,
 Cyrillic, ₹ — `web/src/features/export/fonts`, OFL) so amounts read ₹ and
 accented names print; it falls back to Helvetica and "Rs" if the font cannot

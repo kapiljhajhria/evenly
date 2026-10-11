@@ -29,8 +29,8 @@ export interface ExpenseFormValues {
   paidBy: string;
   splitType: SplitType;
   splitInputs: { memberId: string; input: number }[];
-  /** Only ever set when the form was rendered `withReceipt`. */
-  receipt: EncodedReceipt | null;
+  /** Only ever non-empty when the form was rendered `withReceipt`. */
+  receipts: EncodedReceipt[];
   /** Settlement mode only: the transfer breakdown, or null for one amount. */
   parts: SettlementPart[] | null;
   unconfirmed: boolean;
@@ -99,7 +99,7 @@ export function ExpenseForm({
   const [splitValue, setSplitValue] = useState<Record<string, number>>(
     initial?.splitValue ?? Object.fromEntries(members.map((m) => [m.id, 1])),
   );
-  const [receipt, setReceipt] = useState<EncodedReceipt | null>(null);
+  const [receipts, setReceipts] = useState<EncodedReceipt[]>([]);
   const [unconfirmed, setUnconfirmed] = useState(initial?.unconfirmed ?? false);
   const [busy, setBusy] = useState(false);
   const online = useOnline();
@@ -125,7 +125,7 @@ export function ExpenseForm({
         paidBy,
         splitType,
         splitInputs: Object.entries(splitValue).map(([memberId, input]) => ({ memberId, input })),
-        receipt: withReceipt ? receipt : null,
+        receipts: withReceipt ? receipts : [],
         parts: settlementMode ? payment.parts : null,
         unconfirmed: !settlementMode && unconfirmed,
       });
@@ -213,7 +213,7 @@ export function ExpenseForm({
         <LocationField capture={locationCapture} />
       </Field>
 
-      {withReceipt && !settlementMode && <ReceiptField value={receipt} onChange={setReceipt} />}
+      {withReceipt && !settlementMode && <ReceiptField value={receipts} onChange={setReceipts} />}
 
       {!settlementMode && (
         <label

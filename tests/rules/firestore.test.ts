@@ -5,7 +5,7 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
-  addDoc, collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc,
+  addDoc, collection, collectionGroup, deleteDoc, deleteField, doc, getDoc, getDocs, query, serverTimestamp, setDoc,
   updateDoc, where, writeBatch, Timestamp,
 } from 'firebase/firestore';
 import {
@@ -550,6 +550,71 @@ describe('expenses: ownership', () => {
     );
   });
 
+  const receiptEntry = (n = 1) => ({ path: null, status: 'pending', addedAt: n, updatedAt: serverTimestamp() });
+
+  it('lets the payer attach more receipts, one entry per file', async () => {
+    const ref = doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob');
+    await assertSucceeds(updateDoc(ref, { 'receipts.abc123': receiptEntry(1), updatedAt: serverTimestamp() }));
+    await assertSucceeds(
+      updateDoc(ref, {
+        'receipts.abc123': { path: `receipts/${GROUP_ID}/paid-by-bob_abc123.webp`, status: 'uploaded', addedAt: 1 },
+      }),
+    );
+  });
+
+  it('lets the recorder attach and remove a receipt entry', async () => {
+    const ref = doc(as(ALICE), 'groups', GROUP_ID, 'expenses', 'paid-by-bob');
+    await assertSucceeds(updateDoc(ref, { 'receipts.abc123': receiptEntry() }));
+    await assertSucceeds(updateDoc(ref, { 'receipts.abc123': deleteField() }));
+  });
+
+  it('caps receipts at ten files', async () => {
+    const ten = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`r0000${i}`, receiptEntry(i)]));
+    await seedExpense(env, 'full', { paidBy: SLOT_BOB, createdBy: BOB, receipts: ten });
+    await assertFails(
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'full'), { 'receipts.one111': receiptEntry(11) }),
+    );
+    // Removing one, or replacing one in place, is still fine at the limit.
+    await assertSucceeds(
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'full'), { 'receipts.r00000': receiptEntry(0) }),
+    );
+  });
+
+  it('only accepts receipts as a map', async () => {
+    await assertFails(
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), { receipts: ['receipts/x.webp'] }),
+    );
+  });
+
+  it('blocks a member who neither paid nor recorded from attaching receipts', async () => {
+    await seedExpense(env, 'alice-own2', { paidBy: SLOT_ALICE, createdBy: ALICE });
+    await assertFails(
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'alice-own2'), { 'receipts.abc123': receiptEntry() }),
+    );
+  });
+
+  it('lets the payer attach proof to a payment', async () => {
+    await seedExpense(env, 'payment', {
+      type: 'settlement',
+      paidBy: SLOT_BOB,
+      createdBy: BOB,
+      splitType: 'amount',
+      splits: [{ memberId: SLOT_ALICE, input: 30000, owedPaise: 30000 }],
+    });
+    await assertSucceeds(
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'payment'), { 'receipts.abc123': receiptEntry() }),
+    );
+  });
+
+  it('blocks smuggling a money change alongside a receipts patch', async () => {
+    await assertFails(
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob'), {
+        'receipts.abc123': receiptEntry(),
+        amountPaise: 1,
+      }),
+    );
+  });
+
   it('blocks hard deletes even by the payer — deletes are soft, through updateExpense', async () => {
     await assertFails(deleteDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'paid-by-bob')));
   });
@@ -590,6 +655,14 @@ describe('closed groups are read-only', () => {
   it('blocks new expenses', async () => {
     await assertFails(
       setDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'new'), expenseData({ createdBy: BOB, paidBy: SLOT_BOB })),
+    );
+  });
+
+  it('blocks attaching more receipts too', async () => {
+    await assertFails(
+      updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'expenses', 'old'), {
+        'receipts.abc123': { path: null, status: 'pending', addedAt: 1 },
+      }),
     );
   });
 

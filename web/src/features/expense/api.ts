@@ -2,7 +2,7 @@ import { addDoc, deleteDoc, serverTimestamp, type Timestamp } from 'firebase/fir
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase.js';
 import type { Expense, ExpenseLocation, ExpenseType, SettlementPart, SplitType } from '@app/shared';
-import { assertSplitsValid, computeSplits, normalizeParts, partsTotal, settlementSplits } from '@app/shared';
+import { assertSplitsValid, computeSplits, MAX_RECEIPTS, normalizeParts, partsTotal, settlementSplits } from '@app/shared';
 import { commentDoc, commentsCol, expensesCol } from '../../lib/paths.js';
 
 export interface NewExpenseInput {
@@ -20,9 +20,33 @@ export interface NewExpenseInput {
   splitInputs: { memberId: string; input: number }[];
   createdBy: string;
   type?: ExpenseType;
-  receiptPending?: boolean;
+  /** Receipts about to upload; see pendingReceipts. */
+  receipts?: PendingReceipt[];
   /** "Not sure who paid" — shown in orange until someone confirms it. */
   unconfirmed?: boolean;
+}
+
+/** A receipt picked before saving; queueReceipt uploads it with the same id. */
+export interface PendingReceipt {
+  id: string;
+  addedAt: number;
+}
+
+/**
+ * The new entry's receipts, already marked uploading, so everyone sees them
+ * coming the moment it is saved. Only written when there are some, so
+ * entries without keep their old shape.
+ */
+function pendingReceipts(receipts: PendingReceipt[] | undefined) {
+  if (!receipts?.length) return {};
+  return {
+    receipts: Object.fromEntries(
+      receipts.slice(0, MAX_RECEIPTS).map(({ id, addedAt }) => [
+        id,
+        { path: null, status: 'pending', addedAt, updatedAt: serverTimestamp() },
+      ]),
+    ),
+  };
 }
 
 export async function addExpense(input: NewExpenseInput): Promise<string> {
@@ -41,8 +65,9 @@ export async function addExpense(input: NewExpenseInput): Promise<string> {
     createdBy: input.createdBy,
     splitType: input.splitType,
     splits,
-    receiptStatus: input.receiptPending ? 'pending' : 'none',
+    receiptStatus: 'none',
     receiptPath: null,
+    ...pendingReceipts(input.receipts),
     // Only written when set, so confirmed expenses keep their old shape.
     ...(input.unconfirmed ? { unconfirmed: true } : {}),
     createdAt: serverTimestamp(),
@@ -66,6 +91,7 @@ export async function addSettlement(args: {
   time?: string | null;
   createdBy: string;
   note?: string;
+  receipts?: PendingReceipt[];
 }): Promise<string> {
   const splits = settlementSplits(args.toMemberId, args.amountPaise);
   const parts = normalizeParts(args.parts);
@@ -88,6 +114,7 @@ export async function addSettlement(args: {
     ...(parts ? { parts } : {}),
     receiptStatus: 'none',
     receiptPath: null,
+    ...pendingReceipts(args.receipts),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -158,8 +185,9 @@ export function expensePermissions(args: {
     canEdit: owns,
     canDelete: owns || groupCreatedBy === uid,
     // The recorder too: they are usually the one holding the paper receipt,
-    // even when the expense was paid by someone else. Settlements have none.
-    canManageReceipt: expense.type !== 'settlement' && (owns || expense.createdBy === uid),
+    // even when the expense was paid by someone else. Payments too: a UPI
+    // screenshot is the proof.
+    canManageReceipt: owns || expense.createdBy === uid,
     // Mirrors updateExpense: the payer, or whoever recorded it.
     canConfirm: owns || expense.createdBy === uid,
     // Restore mirrors delete: the payer, or the group creator.

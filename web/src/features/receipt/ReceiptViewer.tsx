@@ -6,12 +6,23 @@ import { Spinner } from '../../components/ui.js';
 import { receiptKind } from './kind.js';
 
 /**
- * "View receipt" link that opens a full-screen viewer. The download URL is
- * only fetched on tap — the expense list would otherwise spend a Storage call
- * per row whether anyone looks or not.
+ * "View receipt" link that opens a full-screen viewer — over every file when
+ * there are several, with previous / next. A download URL is only fetched
+ * for the file on screen — the expense list would otherwise spend a Storage
+ * call per row whether anyone looks or not.
  */
-export function ReceiptLink({ path, className = '' }: { path: string; className?: string }) {
+export function ReceiptLink({
+  paths,
+  label,
+  className = '',
+}: {
+  paths: string[];
+  label?: string;
+  className?: string;
+}) {
   const [open, setOpen] = useState(false);
+  if (paths.length === 0) return null;
+  const only = paths.length === 1 ? paths[0]! : null;
   return (
     <>
       <button
@@ -20,20 +31,26 @@ export function ReceiptLink({ path, className = '' }: { path: string; className?
         className={`inline-flex items-center gap-1 font-medium text-brand-600 hover:underline ${className}`}
       >
         <ReceiptIcon />
-        {receiptKind(path) === 'pdf' ? 'View bill (PDF)' : 'View receipt'}
+        {label ?? (only ? (receiptKind(only) === 'pdf' ? 'View bill (PDF)' : 'View receipt') : `View ${paths.length} receipts`)}
       </button>
-      {open && <ReceiptViewer path={path} onClose={() => setOpen(false)} />}
+      {open && <ReceiptViewer paths={paths} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-function ReceiptViewer({ path, onClose }: { path: string; onClose: () => void }) {
+function ReceiptViewer({ paths, onClose }: { paths: string[]; onClose: () => void }) {
+  const [index, setIndex] = useState(0);
+  const path = paths[Math.min(index, paths.length - 1)]!;
   const isPdf = receiptKind(path) === 'pdf';
+  const many = paths.length > 1;
+  const go = (step: number) => setIndex((current) => (current + step + paths.length) % paths.length);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
+    setUrl(null);
+    setError(null);
     getDownloadURL(ref(storage, path))
       .then((value) => live && setUrl(value))
       .catch(() => live && setError('This receipt could not be loaded.'));
@@ -43,10 +60,14 @@ function ReceiptViewer({ path, onClose }: { path: string; onClose: () => void })
   }, [path]);
 
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+      else if (event.key === 'ArrowRight' && paths.length > 1) setIndex((i) => (i + 1) % paths.length);
+      else if (event.key === 'ArrowLeft' && paths.length > 1) setIndex((i) => (i - 1 + paths.length) % paths.length);
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, paths.length]);
 
   return createPortal(
     <div
@@ -69,6 +90,11 @@ function ReceiptViewer({ path, onClose }: { path: string; onClose: () => void })
           </a>
         ) : (
           <span />
+        )}
+        {many && (
+          <span className="tabular text-sm text-slate-300">
+            {Math.min(index, paths.length - 1) + 1} of {paths.length}
+          </span>
         )}
         <button type="button" onClick={onClose} className="text-sm font-semibold">
           Close
@@ -106,6 +132,30 @@ function ReceiptViewer({ path, onClose }: { path: string; onClose: () => void })
           <Spinner className="size-8 text-slate-400" />
         )}
       </div>
+      {many && (
+        <div className="flex justify-between gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              go(-1);
+            }}
+            className="min-h-11 rounded-xl bg-white/10 px-5 text-sm font-semibold hover:bg-white/20"
+          >
+            ← Previous
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              go(1);
+            }}
+            className="min-h-11 rounded-xl bg-white/10 px-5 text-sm font-semibold hover:bg-white/20"
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </div>,
     document.body,
   );

@@ -1,7 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { Expense, Member, WithId } from '@app/shared';
 import type { DateFormat } from '@app/shared';
-import { formatDate, formatPaise, formatTime, usableParts } from '@app/shared';
+import { formatDate, formatPaise, formatTime, receiptFilePaths, usableParts } from '@app/shared';
 import { useDisplayDateFormat } from '../../stores/preferences.js';
 import { Link } from 'react-router';
 import { Avatar, Button, EmptyState, Money } from '../../components/ui.js';
@@ -9,7 +9,7 @@ import { deleteExpense, expensePermissions } from './api.js';
 import { MapLink } from './LocationField.js';
 import { ReceiptLink } from '../receipt/ReceiptViewer.js';
 import { ReceiptRetryButton } from '../receipt/ReceiptSection.js';
-import { needsAttention, viewOf } from '../receipt/status.js';
+import { summarize } from '../receipt/status.js';
 import type { CommentsByExpense } from '../../hooks/useExpenses.js';
 import { CommentThread } from './CommentThread.js';
 import { UnconfirmedNotice } from './UnconfirmedNotice.js';
@@ -66,7 +66,8 @@ export function ExpenseList({
             groupActive,
           });
           const isSettlement = expense.type === 'settlement';
-          const receipt = viewOf(expense);
+          const receipt = summarize(expense);
+          const files = receiptFilePaths(expense);
           const parts = usableParts(expense);
           const thread = comments[expense.id] ?? [];
           const unsure = expense.unconfirmed === true;
@@ -74,7 +75,7 @@ export function ExpenseList({
           const hasDetail =
             Boolean(expense.note) ||
             Boolean(expense.location) ||
-            Boolean(expense.receiptPath) ||
+            files.length > 0 ||
             parts !== null ||
             thread.length > 0 ||
             groupActive ||
@@ -111,12 +112,20 @@ export function ExpenseList({
                       )}
                       {expense.note && <span aria-label="has a note">· 📝</span>}
                       {expense.location && <span aria-label="has a location">· 📍</span>}
-                      {receipt === 'uploaded' && <span aria-label="has a receipt">· 🧾</span>}
-                      {needsAttention(receipt) && (
-                        <span className="text-amber-600">· receipt upload failed</span>
+                      {receipt.files > 0 && (
+                        <span aria-label={receipt.files === 1 ? 'has a receipt' : `${receipt.files} receipts`}>
+                          · 🧾{receipt.files > 1 ? ` ${receipt.files}` : ''}
+                        </span>
                       )}
-                      {receipt === 'uploading' && (
-                        <span className="text-slate-400">· uploading receipt</span>
+                      {receipt.attention > 0 && (
+                        <span className="text-amber-600">
+                          · {receipt.attention === 1 ? 'receipt' : `${receipt.attention} receipts`} failed to upload
+                        </span>
+                      )}
+                      {receipt.uploading > 0 && receipt.attention === 0 && (
+                        <span className="text-slate-400">
+                          · uploading {receipt.uploading === 1 ? 'receipt' : `${receipt.uploading} receipts`}
+                        </span>
                       )}
                     </p>
                   </div>
@@ -155,17 +164,17 @@ export function ExpenseList({
                     <p className="text-sm whitespace-pre-wrap text-slate-600">{expense.note}</p>
                   )}
 
-                  {(expense.location || expense.receiptPath) && (
+                  {(expense.location || files.length > 0) && (
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                       {expense.location && <MapLink location={expense.location} />}
-                      {expense.receiptPath && <ReceiptLink path={expense.receiptPath} />}
+                      <ReceiptLink paths={files} />
                     </div>
                   )}
 
-                  {needsAttention(receipt) && canManageReceipt && (
+                  {receipt.attention > 0 && canManageReceipt && (
                     <p className="text-xs text-amber-700">
-                      The receipt photo did not upload.{' '}
-                      <ReceiptRetryButton groupId={groupId} expenseId={expense.id} />
+                      {receipt.attention === 1 ? 'A receipt' : `${receipt.attention} receipts`} did not upload.{' '}
+                      <ReceiptRetryButton groupId={groupId} expense={expense} />
                     </p>
                   )}
 

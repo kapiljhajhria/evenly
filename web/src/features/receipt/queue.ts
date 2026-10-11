@@ -1,4 +1,4 @@
-import { serverTimestamp, updateDoc } from 'firebase/firestore';
+import { deleteField, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
 import type { ReceiptStatus } from '@app/shared';
 import { storage } from '../../lib/firebase.js';
@@ -15,6 +15,11 @@ import type { EncodedReceipt } from './encode.js';
  * time the app opens or comes back online — the photo is not lost with the
  * page. If IndexedDB is unavailable (some private modes) the upload still runs,
  * it just cannot outlive the page.
+ *
+ * Each file is its own entry in `Expense.receipts` (shared/src/receipts.ts)
+ * with its own status, so several upload side by side. Entries queued before
+ * that existed have no `receiptId` and still finish into the original
+ * `receiptPath` / `receiptStatus` fields.
  */
 
 interface QueuedReceipt extends EncodedReceipt {
@@ -22,6 +27,10 @@ interface QueuedReceipt extends EncodedReceipt {
   uid: string;
   groupId: string;
   expenseId: string;
+  /** Absent: an upload into the original single-receipt fields. */
+  receiptId?: string;
+  /** Orders the receipts on the expense. */
+  addedAt?: number;
   queuedAt: number;
 }
 
@@ -31,7 +40,14 @@ const MAX_ATTEMPTS = 4;
 const DB_NAME = 'evenly-receipts';
 const STORE = 'uploads';
 
-const keyOf = (groupId: string, expenseId: string) => `${groupId}/${expenseId}`;
+const keyOf = (groupId: string, expenseId: string, receiptId: string | null | undefined) =>
+  receiptId ? `${groupId}/${expenseId}/${receiptId}` : `${groupId}/${expenseId}`;
+
+/** 12 random base-36 characters: matches RECEIPT_ID_PATTERN. */
+export function newReceiptId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return Array.from(bytes, (byte) => (byte % 36).toString(36)).join('');
+}
 
 const inFlight = new Set<string>();
 /** Keys whose receipt was removed or replaced while an upload was running. */
@@ -113,7 +129,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Errors no retry can fix: the expense was deleted (storage rule checks it
- * exists), the group was closed, or this user no longer owns the receipt.
+ * exists), the group was closed, this user no longer owns the receipt, or
+ * someone removed this receipt while it was uploading.
  */
 function isPermanent(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code ?? '';
@@ -125,10 +142,45 @@ function isPermanent(error: unknown): boolean {
   );
 }
 
-async function setStatus(entry: QueuedReceipt, receiptStatus: ReceiptStatus, path?: string): Promise<void> {
-  await updateDoc(expenseDoc(entry.groupId, entry.expenseId), {
-    receiptStatus,
-    ...(path !== undefined ? { receiptPath: path } : {}),
+const removed = () => Object.assign(new Error('This receipt was removed.'), { code: 'not-found' });
+
+/**
+ * `create` adds the receipt's entry; every later write first checks it is
+ * still there, so an upload does not bring back a receipt someone removed
+ * in the meantime. A read then a write rather than a transaction:
+ * transactions queue behind the doc's other writes (seconds in production,
+ * tens of seconds on the emulator) and this runs on every status change. A
+ * removal landing between the two only brings the entry back whole — file
+ * and all — to be removed again, never a broken one.
+ */
+async function setStatus(
+  entry: QueuedReceipt,
+  status: ReceiptStatus,
+  path?: string,
+  { create = false } = {},
+): Promise<void> {
+  const ref = expenseDoc(entry.groupId, entry.expenseId);
+  const { receiptId } = entry;
+  if (!receiptId) {
+    await updateDoc(ref, {
+      receiptStatus: status,
+      ...(path !== undefined ? { receiptPath: path } : {}),
+      updatedAt: serverTimestamp(),
+    });
+    return;
+  }
+  if (!create) {
+    const snap = await getDoc(ref);
+    const existing = (snap.data()?.receipts as Record<string, unknown> | undefined)?.[receiptId];
+    if (!snap.exists() || !existing) throw removed();
+  }
+  await updateDoc(ref, {
+    [`receipts.${receiptId}`]: {
+      path: path ?? null,
+      status,
+      addedAt: entry.addedAt ?? entry.queuedAt,
+      updatedAt: serverTimestamp(),
+    },
     updatedAt: serverTimestamp(),
   });
 }
@@ -137,7 +189,7 @@ async function run(entry: QueuedReceipt): Promise<void> {
   if (inFlight.has(entry.key)) return;
   inFlight.add(entry.key);
   cancelled.delete(entry.key);
-  const path = receiptPath(entry.groupId, entry.expenseId, entry.ext);
+  const path = receiptPath(entry.groupId, entry.expenseId, entry.receiptId ?? null, entry.ext);
 
   try {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -153,8 +205,9 @@ async function run(entry: QueuedReceipt): Promise<void> {
         // fails, the entry is put back and the loop retries.
         await forget(entry.key);
         try {
-          // A changed path (webp → jpg replacement) makes onExpenseWrite
-          // delete the old file; the same path is simply overwritten.
+          // A changed original-receipt path (webp → jpg replacement) makes
+          // onExpenseWrite delete the old file; the same path is simply
+          // overwritten. New receipts always have a path of their own.
           await setStatus(entry, 'uploaded', path);
         } catch (error) {
           if (!isPermanent(error)) await save(entry);
@@ -185,31 +238,68 @@ async function run(entry: QueuedReceipt): Promise<void> {
  * Park the receipt and start uploading it. Resolves once the blob is stored,
  * not when the upload finishes — callers navigate away straight after.
  *
- * Pass `alreadyPending` when the expense was just created with
- * `receiptStatus: 'pending'`, to skip a redundant write.
+ * Pass `receiptId` and `addedAt` with `alreadyPending` when the expense was
+ * just created with this receipt's entry already in `receipts` (see
+ * pendingReceipts in expense/api.ts), to skip a redundant write.
  */
 export async function queueReceipt(args: {
   uid: string;
   groupId: string;
   expenseId: string;
   receipt: EncodedReceipt;
+  receiptId?: string;
+  addedAt?: number;
   alreadyPending?: boolean;
 }): Promise<void> {
-  const key = keyOf(args.groupId, args.expenseId);
-  // A replacement while an earlier upload is running: stop the old one.
-  if (inFlight.has(key)) cancelled.add(key);
-
+  const receiptId = args.receiptId ?? newReceiptId();
   const entry: QueuedReceipt = {
-    key,
+    key: keyOf(args.groupId, args.expenseId, receiptId),
     uid: args.uid,
     groupId: args.groupId,
     expenseId: args.expenseId,
+    receiptId,
+    addedAt: args.addedAt ?? Date.now(),
     ...args.receipt,
     queuedAt: Date.now(),
   };
   await save(entry);
-  if (!args.alreadyPending) await setStatus(entry, 'pending');
-  void waitThenRun(key);
+  if (!args.alreadyPending) {
+    try {
+      await setStatus(entry, 'pending', undefined, { create: true });
+    } catch (error) {
+      await forget(entry.key);
+      throw error;
+    }
+  }
+  void waitThenRun(entry.key);
+}
+
+/**
+ * For a new expense or payment: ids for the receipts picked on the form,
+ * written with the entry itself (see addExpense / addSettlement)…
+ */
+export const pendingFor = (receipts: readonly EncodedReceipt[]): { id: string; addedAt: number }[] => {
+  const now = Date.now();
+  // +index keeps the picked order even within one millisecond.
+  return receipts.map((_, index) => ({ id: newReceiptId(), addedAt: now + index }));
+};
+
+/**
+ * …then parked and uploaded once it is saved. Resolves when the files are
+ * stored locally; the uploads carry on after the page navigates away.
+ */
+export async function queuePicked(
+  uid: string,
+  groupId: string,
+  expenseId: string,
+  receipts: readonly EncodedReceipt[],
+  pending: readonly { id: string; addedAt: number }[],
+): Promise<void> {
+  for (const [index, receipt] of receipts.entries()) {
+    const slot = pending[index];
+    if (!slot) break;
+    await queueReceipt({ uid, groupId, expenseId, receipt, receiptId: slot.id, addedAt: slot.addedAt, alreadyPending: true });
+  }
 }
 
 /** Lets a cancelled run unwind before the replacement starts. */
@@ -219,30 +309,29 @@ async function waitThenRun(key: string): Promise<void> {
   if (entry) await run(entry);
 }
 
-/** Whether this device still holds the photo for a failed upload. */
-export async function hasQueuedReceipt(groupId: string, expenseId: string): Promise<boolean> {
-  return (await load(keyOf(groupId, expenseId))) !== undefined;
-}
-
-/** Manual retry. Returns false when this device has no copy of the photo. */
-export async function retryReceipt(groupId: string, expenseId: string): Promise<boolean> {
-  const entry = await load(keyOf(groupId, expenseId));
+/**
+ * Manual retry. Returns false when this device has no copy of the file.
+ * `receiptId` null: the original single receipt.
+ */
+export async function retryReceipt(groupId: string, expenseId: string, receiptId: string | null): Promise<boolean> {
+  const entry = await load(keyOf(groupId, expenseId, receiptId));
   if (!entry) return false;
   await setStatus(entry, 'pending');
   void run(entry);
   return true;
 }
 
-/** Remove the receipt. onExpenseWrite deletes the file when the path clears. */
-export async function removeReceipt(groupId: string, expenseId: string): Promise<void> {
-  const key = keyOf(groupId, expenseId);
+/** Remove one receipt. onExpenseWrite deletes its file once the doc lets go of it. */
+export async function removeReceipt(groupId: string, expenseId: string, receiptId: string | null): Promise<void> {
+  const key = keyOf(groupId, expenseId, receiptId);
   cancelled.add(key);
   await forget(key);
-  await updateDoc(expenseDoc(groupId, expenseId), {
-    receiptStatus: 'none',
-    receiptPath: null,
-    updatedAt: serverTimestamp(),
-  });
+  await updateDoc(
+    expenseDoc(groupId, expenseId),
+    receiptId
+      ? { [`receipts.${receiptId}`]: deleteField(), updatedAt: serverTimestamp() }
+      : { receiptStatus: 'none', receiptPath: null, updatedAt: serverTimestamp() },
+  );
 }
 
 /**

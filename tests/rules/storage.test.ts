@@ -90,6 +90,25 @@ describe('storage: receipt uploads', () => {
     await assertFails(uploadBytes(ref(storageAs(ALICE), path(file)), bytes(), metadata));
   });
 
+  it('accepts the files of an expense with several receipts', async () => {
+    await assertSucceeds(uploadBytes(ref(storageAs(BOB), path('dinner_k3j9x0a1b2c3.webp')), bytes(), WEBP));
+    await assertSucceeds(uploadBytes(ref(storageAs(BOB), path('dinner_k3j9x0a1b2c4.jpg')), bytes(), JPEG));
+    await assertSucceeds(uploadBytes(ref(storageAs(BOB), path('dinner_k3j9x0a1b2c5.pdf')), bytes(), PDF));
+  });
+
+  it.each([
+    ['for an expense that does not exist', 'ghost_abc123.webp'],
+    ['with two receipt ids', 'dinner_abc_def.webp'],
+    ['with an uppercase receipt id', 'dinner_ABC123.webp'],
+    ['with an empty receipt id', 'dinner_.webp'],
+  ])('blocks a multi-receipt file %s', async (_label, file) => {
+    await assertFails(uploadBytes(ref(storageAs(BOB), path(file)), bytes(), WEBP));
+  });
+
+  it('keeps the photo size cap for multi-receipt files', async () => {
+    await assertFails(uploadBytes(ref(storageAs(BOB), path('dinner_abc123.webp')), bytes(MB + 1), WEBP));
+  });
+
   it('accepts a PDF invoice', async () => {
     await assertSucceeds(uploadBytes(ref(storageAs(BOB), path('dinner.pdf')), bytes(), PDF));
   });

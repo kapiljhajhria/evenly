@@ -522,5 +522,37 @@ describe('updateExpense', () => {
       const [exists] = await bucket.file(path).exists();
       expect(exists).toBe(true);
     });
+
+    it("deletes only the removed receipt's file, never another expense's", async () => {
+      process.env['FIREBASE_STORAGE_EMULATOR_HOST'] ??= '127.0.0.1:9199';
+      const bucket = getStorage(app).bucket(`${PROJECT_ID}.appspot.com`);
+      const id = await seedLegacyExpense();
+      const kept = `receipts/${groupId}/${id}_keep01.webp`;
+      const gone = `receipts/${groupId}/${id}_gone01.pdf`;
+      // Someone else's file, pointed at by a doctored entry.
+      const foreign = `receipts/${groupId}/someone-else.webp`;
+      for (const path of [kept, gone, foreign]) {
+        await bucket.file(path).save(Buffer.from('fake'), { contentType: 'image/webp' });
+      }
+      await expensesRef().doc(id).update({
+        receipts: {
+          keep01: { path: kept, status: 'uploaded', addedAt: 1 },
+          gone01: { path: gone, status: 'uploaded', addedAt: 2 },
+          evil01: { path: foreign, status: 'uploaded', addedAt: 3 },
+        },
+      });
+      await expensesRef().doc(id).update({
+        'receipts.gone01': FieldValue.delete(),
+        'receipts.evil01': FieldValue.delete(),
+      });
+
+      const deadline = Date.now() + 10_000;
+      while ((await bucket.file(gone).exists())[0] && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      expect((await bucket.file(gone).exists())[0]).toBe(false);
+      expect((await bucket.file(kept).exists())[0]).toBe(true);
+      expect((await bucket.file(foreign).exists())[0]).toBe(true);
+    });
   });
 });

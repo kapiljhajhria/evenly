@@ -188,6 +188,43 @@ describe('buildExport', () => {
     ]);
   });
 
+  it('includes every receipt on an entry, numbered, in the order attached', () => {
+    const model = buildExport(
+      input({
+        expenses: [
+          expense({
+            id: 'e1',
+            type: 'settlement',
+            description: 'Settled up',
+            paidBy: 'm-b',
+            amountPaise: 15000,
+            splits: [{ memberId: 'm-a', input: 15000, owedPaise: 15000 }],
+            receiptStatus: 'uploaded',
+            receiptPath: 'receipts/g/e1.webp',
+            receipts: {
+              later1: { path: 'receipts/g/e1_later1.pdf', status: 'uploaded', addedAt: 2 },
+              still1: { path: null, status: 'pending', addedAt: 3 },
+              first1: { path: 'receipts/g/e1_first1.jpg', status: 'uploaded', addedAt: 1 },
+            },
+          }),
+        ],
+      }),
+    );
+    expect(model.receipts.map((r) => r.path)).toEqual([
+      'receipts/g/e1.webp',
+      'receipts/g/e1_first1.jpg',
+      'receipts/g/e1_later1.pdf',
+    ]);
+    expect(model.receipts[1]!.caption).toBe(
+      '22-aug-26 · Bilal paid Asha (settlement) · Rs 150.00 · paid by Bilal · file 2 of 3',
+    );
+    expect(zipEntryNames(model.receipts)).toEqual([
+      'receipts/2026-08-22 Bilal paid Asha (settlement) Rs 150.00 - 1 of 3.webp',
+      'receipts/2026-08-22 Bilal paid Asha (settlement) Rs 150.00 - 2 of 3.jpg',
+      'receipts/2026-08-22 Bilal paid Asha (settlement) Rs 150.00 - 3 of 3.pdf',
+    ]);
+  });
+
   it('summarises balances and the transfers that clear them', () => {
     const model = buildExport(input());
     expect(model.balanceRows).toEqual([

@@ -314,12 +314,19 @@ service cloud.firestore {
       // needs a direct patch. It cannot touch anything that affects money.
       // The recorder may attach one too, even when someone else paid — they
       // are the person holding the paper.
+      //
+      // `receipts` (one entry per file, see shared/src/receipts.ts) is only
+      // size-checked: its keys are not known here, so entries are validated
+      // where they are displayed, like settlement parts. Ten files, plus the
+      // original single receipt on expenses that had one.
       allow update: if isMember(groupId)
         && isActive(groupId)
         && (ownsExpense() || resource.data.createdBy == uid())
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['receiptStatus', 'receiptPath', 'updatedAt'])
-        && request.resource.data.receiptStatus in ['none', 'pending', 'uploaded', 'failed'];
+             .hasOnly(['receiptStatus', 'receiptPath', 'receipts', 'updatedAt'])
+        && request.resource.data.receiptStatus in ['none', 'pending', 'uploaded', 'failed']
+        && request.resource.data.get('receipts', {}) is map
+        && request.resource.data.get('receipts', {}).size() <= 10;
 
       // No hard deletes from clients, ever. Deleting is a soft delete through
       // updateExpense (payer, or the group creator), so a deleted expense

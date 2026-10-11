@@ -1,7 +1,9 @@
 rules_version = '2';
 
-// Receipts live at receipts/{groupId}/{expenseId}.{ext}. Group members only,
-// images only, and the path must point at a real expense in that group.
+// Receipts live at receipts/{groupId}/{expenseId}_{receiptId}.{ext} — or
+// {expenseId}.{ext} for the original single receipt. Group members only,
+// images and PDFs only, and the name must point at a real expense in that
+// group.
 service firebase.storage {
   match /b/{bucket}/o {
 
@@ -14,19 +16,19 @@ service firebase.storage {
       return firestore.exists(/databases/(default)/documents/groups/$(groupId)/expenses/$(expenseId));
     }
 
-    // The client only ever produces {expenseId}.webp, or .jpg where the
+    // The client only ever produces {name}.webp, or .jpg where the
     // browser cannot encode WebP, or .pdf for an invoice uploaded as-is — and
     // the extension must match the type. Photos are re-encoded to ~300KB so
     // keep a 1MB cap; PDFs are not re-encoded, so they get 5MB
     // (MAX_PDF_BYTES in web/src/features/receipt/kind.ts).
     function receiptFile(fileName) {
-      return (fileName.matches('^[A-Za-z0-9_-]+[.]webp$')
+      return (fileName.matches('^[A-Za-z0-9-]+(_[a-z0-9]+)?[.]webp$')
               && request.resource.contentType == 'image/webp'
               && request.resource.size <= 1 * 1024 * 1024)
-        || (fileName.matches('^[A-Za-z0-9_-]+[.]jpg$')
+        || (fileName.matches('^[A-Za-z0-9-]+(_[a-z0-9]+)?[.]jpg$')
               && request.resource.contentType == 'image/jpeg'
               && request.resource.size <= 1 * 1024 * 1024)
-        || (fileName.matches('^[A-Za-z0-9_-]+[.]pdf$')
+        || (fileName.matches('^[A-Za-z0-9-]+(_[a-z0-9]+)?[.]pdf$')
               && request.resource.contentType == 'application/pdf'
               && request.resource.size <= 5 * 1024 * 1024);
     }
@@ -37,7 +39,7 @@ service firebase.storage {
       // create + update only: `write` would include delete.
       allow create, update: if isMember(groupId)
         && receiptFile(fileName)
-        && expenseExists(groupId, fileName.split('[.]')[0]);
+        && expenseExists(groupId, fileName.split('[._]')[0]);
 
       // onExpenseWrite / deleteGroup handle removal.
       allow delete: if false;

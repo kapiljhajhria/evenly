@@ -23,5 +23,6 @@ export const commentDoc = (groupId: string, commentId: string) =>
 /** Powers the home page: every slot claimed by me, across all groups. */
 export const allMembers = () => collectionGroup(db, 'members');
 
-export const receiptPath = (groupId: string, expenseId: string, ext: 'webp' | 'jpg' | 'pdf') =>
-  `receipts/${groupId}/${expenseId}.${ext}`;
+/** `receiptId` null: the original single receipt's file name. */
+export const receiptPath = (groupId: string, expenseId: string, receiptId: string | null, ext: 'webp' | 'jpg' | 'pdf') =>
+  `receipts/${groupId}/${expenseId}${receiptId ? `_${receiptId}` : ''}.${ext}`;

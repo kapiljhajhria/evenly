@@ -158,7 +158,7 @@ export function EditExpensePage() {
       />
 
       {discussion}
-      {!isSettlement && <ReceiptSection groupId={groupId} expense={expense} canManage={canManageReceipt} />}
+      <ReceiptSection groupId={groupId} expense={expense} canManage={canManageReceipt} />
       <ExpenseHistory groupId={groupId} expenseId={expenseId} membersById={byId} />
     </AppShell>
   );

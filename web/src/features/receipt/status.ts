@@ -1,4 +1,5 @@
-import type { ReceiptStatus } from '@app/shared';
+import type { ReceiptEntry, ReceiptStatus } from '@app/shared';
+import { receiptEntries } from '@app/shared';
 
 /**
  * How long `pending` is believed. A full in-session retry run is four
@@ -38,15 +39,31 @@ export function receiptView(
 /** `stalled` and `failed` look the same to people: the photo did not arrive. */
 export const needsAttention = (view: ReceiptView): boolean => view === 'failed' || view === 'stalled';
 
-/** `receiptView` for a stored expense, read against the current clock. */
-export function viewOf(
-  expense: { receiptStatus: ReceiptStatus; receiptPath: string | null; updatedAt?: { toMillis(): number } | null },
+type Stamp = { toMillis(): number };
+
+/** `receiptView` for one stored receipt, read against the current clock. */
+export const entryView = (entry: ReceiptEntry<Stamp>, nowMs: number = Date.now()): ReceiptView =>
+  receiptView(entry.status, Boolean(entry.path), entry.updatedAt?.toMillis() ?? null, nowMs);
+
+export interface ReceiptSummary {
+  /** Files people can open. */
+  files: number;
+  uploading: number;
+  /** Failed or stalled: the file did not arrive. */
+  attention: number;
+}
+
+/** What the expense list says about an expense's receipts, all of them at once. */
+export function summarize(
+  expense: Parameters<typeof receiptEntries<Stamp>>[0],
   nowMs: number = Date.now(),
-): ReceiptView {
-  return receiptView(
-    expense.receiptStatus,
-    Boolean(expense.receiptPath),
-    expense.updatedAt?.toMillis() ?? null,
-    nowMs,
-  );
+): ReceiptSummary {
+  const summary: ReceiptSummary = { files: 0, uploading: 0, attention: 0 };
+  for (const entry of receiptEntries(expense)) {
+    const view = entryView(entry, nowMs);
+    if (entry.path) summary.files += 1;
+    if (view === 'uploading') summary.uploading += 1;
+    if (needsAttention(view)) summary.attention += 1;
+  }
+  return summary;
 }

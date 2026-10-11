@@ -2,7 +2,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import type { BalanceMap, Expense, Group } from '@app/shared';
-import { applyDelta, isDeleted, isSettledUp, notificationsForCreate, notificationsForDelete, splitsAreValid, writeDelta } from '@app/shared';
+import { applyDelta, isDeleted, isSettledUp, notificationsForCreate, notificationsForDelete, splitsAreValid, storedReceiptPaths, writeDelta } from '@app/shared';
 import { deliver, groupFacts } from './push.js';
 import { bucket, db, groupRef } from './common.js';
 
@@ -105,9 +105,11 @@ export const onExpenseWrite = onDocumentWritten('groups/{groupId}/expenses/{expe
 
   // Folded-in receipt cleanup: removing or replacing a receipt deletes the old
   // file. Compared on the RAW docs — a soft delete makes `after` null for
-  // balances, but the expense and its receipt still exist and can be restored.
-  const removedPath = rawBefore?.receiptPath;
-  if (removedPath && removedPath !== (rawAfter?.receiptPath ?? null)) {
+  // balances, but the expense and its receipts still exist and can be
+  // restored. Only this expense's own files are ever deleted.
+  const kept = new Set(storedReceiptPaths(groupId, expenseId, rawAfter));
+  for (const removedPath of storedReceiptPaths(groupId, expenseId, rawBefore)) {
+    if (kept.has(removedPath)) continue;
     try {
       await bucket().file(removedPath).delete({ ignoreNotFound: true });
     } catch (error) {

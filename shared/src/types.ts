@@ -34,6 +34,17 @@ export type ExpenseType = 'expense' | 'settlement';
 export type SplitType = 'equal' | 'amount' | 'percent' | 'portions';
 export type ReceiptStatus = 'none' | 'pending' | 'uploaded' | 'failed';
 
+/** One entry of `Expense.receipts`. */
+export interface ReceiptFile<TS = TimestampLike> {
+  /** `receipts/{groupId}/{expenseId}_{receiptId}.{ext}`, once uploaded. */
+  path: string | null;
+  /** Never `none`: removing a receipt deletes its entry. */
+  status: ReceiptStatus;
+  /** Client clock, millis. Orders the receipts; never changes. */
+  addedAt: number;
+  updatedAt?: TS | null;
+}
+
 export const SPLIT_TYPES: readonly SplitType[] = ['equal', 'portions', 'amount', 'percent'];
 
 /**
@@ -170,8 +181,14 @@ export interface Expense<TS = TimestampLike> {
   splitType: SplitType;
   /** Sorted by memberId ascending. `owedPaise` must sum to `amountPaise`. */
   splits: SplitEntry[];
+  /** The original single receipt. Older expenses only; see receipts.ts. */
   receiptStatus: ReceiptStatus;
   receiptPath: string | null;
+  /**
+   * Every receipt attached since multiple receipts existed, keyed by receipt
+   * id. Optional: absent on everything recorded before. See receipts.ts.
+   */
+  receipts?: Record<string, ReceiptFile<TS>> | null;
   createdAt: TS;
   updatedAt: TS;
 }

@@ -17,6 +17,9 @@ import { Button, Card, EmptyState, ErrorNote, Field, FullPageSpinner, Input } fr
 import { paymentWarning } from './payment.js';
 import { PaymentAmountField } from './PaymentAmountField.js';
 import { emptyRow, parseRows, type PartRow } from './parts.js';
+import { ReceiptField } from '../receipt/ReceiptPicker.js';
+import type { EncodedReceipt } from '../receipt/encode.js';
+import { pendingFor, queuePicked } from '../receipt/queue.js';
 
 const SELECT_CLASS =
   'min-h-11 w-full rounded-xl border-0 bg-white px-3 text-base ring-1 ring-slate-200 focus:ring-2 focus:ring-brand-500';
@@ -44,6 +47,7 @@ export function SettleUpPage() {
   const [to, setTo] = useState('');
   const [rows, setRows] = useState<PartRow[]>([emptyRow()]);
   const [note, setNote] = useState('');
+  const [receipts, setReceipts] = useState<EncodedReceipt[]>([]);
 
   const myMemberId = members.find((m) => m.uid === user?.uid)?.id ?? null;
   const balances = group?.balances ?? {};
@@ -75,11 +79,13 @@ export function SettleUpPage() {
     paise: number,
     text?: string,
     breakdown?: typeof parts,
+    files: EncodedReceipt[] = [],
   ) => {
     setBusy(key);
     setError(null);
     try {
-      await addSettlement({
+      const pending = pendingFor(files);
+      const settlementId = await addSettlement({
         groupId,
         fromMemberId: payer,
         toMemberId: receiver,
@@ -91,7 +97,9 @@ export function SettleUpPage() {
         time: localTimeString(),
         createdBy: user.uid,
         note: text,
+        receipts: pending,
       });
+      await queuePicked(user.uid, groupId, settlementId, files, pending);
       navigate(`/group/${groupId}`, { replace: true });
     } catch (err) {
       setError((err as Error).message);
@@ -101,7 +109,7 @@ export function SettleUpPage() {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (canRecord) void record('custom', from, to, amountPaise, note, parts);
+    if (canRecord) void record('custom', from, to, amountPaise, note, parts, receipts);
   };
 
   /** Pre-fill the form from a suggestion, to record part of it. */
@@ -153,7 +161,7 @@ export function SettleUpPage() {
                             onClick={() => prefill(transfer.from, transfer.to, transfer.amountPaise)}
                             className="text-xs text-brand-600 underline underline-offset-2"
                           >
-                            Paid a different amount?
+                            Different amount, or add a screenshot?
                           </button>
                         </div>
                         <Button
@@ -217,6 +225,7 @@ export function SettleUpPage() {
               <Field label="Note" hint="Optional. Shown instead of “Settled up”.">
                 <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={140} placeholder="UPI, cash…" />
               </Field>
+              <ReceiptField value={receipts} onChange={setReceipts} />
               {warning && <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">{warning}</p>}
               <Button type="submit" busy={busy === 'custom'} disabled={!canRecord} className="w-full">
                 Record payment
