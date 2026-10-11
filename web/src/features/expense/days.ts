@@ -1,4 +1,4 @@
-import { localDateString } from '@app/shared';
+import { isPersonal, localDateString } from '@app/shared';
 
 /**
  * The expense list, one section per day. Pure, so the grouping and the
@@ -54,15 +54,7 @@ export type Involvement =
 
 type EntryLike = { type: string; paidBy: string; amountPaise: number; splits: { memberId: string; owedPaise: number }[] };
 
-/**
- * One person paid, for themselves only. It moves no balance but still counts
- * as spending, so the list marks it — nobody should mistake it for a shared
- * cost.
- */
-export function isPersonal(entry: EntryLike): boolean {
-  const owing = entry.splits.filter((s) => s.owedPaise > 0);
-  return entry.type === 'expense' && owing.length === 1 && owing[0]!.memberId === entry.paidBy;
-}
+export { isPersonal };
 
 /** What an entry means for you, Splitwise-style. */
 export function involvementOf(entry: EntryLike, myMemberId: string | null): Involvement {

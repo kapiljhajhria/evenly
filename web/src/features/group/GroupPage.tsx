@@ -265,7 +265,7 @@ export function GroupPage() {
             <div>
               <p className="font-display text-lg font-semibold">Export</p>
               <p className="text-sm text-slate-500">
-                A PDF of every expense and balance, with all receipts at the end.
+                A PDF of balances, insights and every expense — receipts optional.
               </p>
             </div>
             <ExportButton
@@ -275,6 +275,7 @@ export function GroupPage() {
               balances={group.balances ?? {}}
               members={exportMembers}
               withZip
+              receiptsOption
             />
           </Card>
 

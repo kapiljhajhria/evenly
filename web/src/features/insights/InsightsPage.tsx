@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import type { Timestamp } from 'firebase/firestore';
 import type { CategorySpend, DaySpend, Insights, Member, MemberSpend, WithId } from '@app/shared';
-import { computeInsights, formatDate, formatPaise, UNCATEGORIZED } from '@app/shared';
+import { computeInsights, sharePercent, formatDate, formatPaise, UNCATEGORIZED } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useOnline } from '../../hooks/useOnline.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
@@ -273,7 +273,7 @@ function CategoryBreakdown({
           {categories.map((c) => {
             const on = selected === c.key;
             const dim = selected !== null && !on;
-            const share = total > 0 ? Math.round((c.paise / total) * 100) : 0;
+            const share = sharePercent(c.paise, total);
             return (
               <li key={c.key}>
                 <button
@@ -285,7 +285,7 @@ function CategoryBreakdown({
                   <span className="flex items-baseline gap-2 text-sm">
                     <span aria-hidden className="w-6 text-center text-lg leading-none">{c.emoji}</span>
                     <span className="min-w-0 flex-1 truncate font-medium text-slate-800">{c.label}</span>
-                    <span className="tabular text-xs text-slate-400">{share}%</span>
+                    <span className="tabular text-xs text-slate-400">{share}</span>
                     <span className="tabular w-28 text-right font-semibold text-slate-900">{formatPaise(c.paise)}</span>
                   </span>
                   <Bar fraction={c.paise / max} strong={on} muted={c.key === UNCATEGORIZED} />

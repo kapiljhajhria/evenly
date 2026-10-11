@@ -80,9 +80,13 @@ describe('buildExport', () => {
     expect(row).toEqual(['22-aug-26', 'Dinner', 'Asha', 'Rs 300.01', 'Asha Rs 150.01\nBilal Rs 150.00']);
   });
 
-  it('flags an expense that was never confirmed', () => {
-    const [row] = buildExport(input({ expenses: [expense({ unconfirmed: true })] })).ledgerRows;
-    expect(row![1]).toBe('Dinner [NOT CONFIRMED]');
+  it('tags an expense that was never confirmed, and still says so on its receipt', () => {
+    const model = buildExport(
+      input({ expenses: [expense({ unconfirmed: true, receiptPath: 'receipts/g/e1.webp', receiptStatus: 'uploaded' })] }),
+    );
+    expect(model.ledgerRows[0]![1]).toBe('Dinner');
+    expect(model.ledgerTags[0]).toEqual([{ kind: 'unconfirmed', label: 'Not confirmed' }]);
+    expect(model.receipts[0]!.caption).toContain('Dinner [NOT CONFIRMED]');
   });
 
   it("uses the exporter's own date setting", () => {
@@ -151,7 +155,7 @@ describe('buildExport', () => {
       }),
     );
     expect(model.ledgerRows[1]).toEqual(['22-aug-26', 'Bilal paid Asha (settlement)', 'Bilal', 'Rs 150.00', '—']);
-    expect(model.totals).toEqual({ spentPaise: 30001, expenseCount: 1, settlementCount: 1 });
+    expect(model.totals).toEqual({ spentPaise: 30001, expenseCount: 1, settlementCount: 1, personalPaise: 0 });
   });
 
   it('lists the transfers of a payment made in several goes', () => {
@@ -364,8 +368,29 @@ describe('buildExport — insights', () => {
     expect(empty.myInsights).toBeNull();
   });
 
-  it('shows the category beside the description in the ledger', () => {
-    const rows = buildExport(trip).ledgerRows;
-    expect(rows[0]![1]).toBe('Dinner · Food');
+  it('tags each entry with its category, and marks personal expenses', () => {
+    const model = buildExport({
+      ...trip,
+      expenses: [
+        ...trip.expenses,
+        expense({
+          id: 'mine',
+          description: 'Bike fuel',
+          category: 'fuel',
+          date: '2026-08-24',
+          amountPaise: 60000,
+          splits: [{ memberId: 'm-a', input: 60000, owedPaise: 60000 }],
+        }),
+      ],
+    });
+    const at = (description: string) => model.ledgerRows.findIndex((row) => row[1] === description);
+    expect(model.ledgerTags[at('Dinner')]).toEqual([{ kind: 'category', key: 'food', label: 'Food' }]);
+    expect(model.ledgerTags[at('Bike fuel')]).toEqual([
+      { kind: 'personal', label: 'Personal · just Asha' },
+      { kind: 'category', key: 'fuel', label: 'Fuel' },
+    ]);
+    expect(model.ledgerTags[at('Bilal paid Asha (settlement)')]).toEqual([]);
+    expect(model.totals.personalPaise).toBe(60000);
+    expect(model.groupInsights?.categoryKeys).toEqual(['stay', 'fuel', 'food']);
   });
 });

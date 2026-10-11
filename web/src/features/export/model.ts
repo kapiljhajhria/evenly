@@ -8,11 +8,15 @@ import {
   formatDateTimeOf,
   formatPaise,
   formatTime,
+  isPersonal,
   netFor,
   receiptFilePaths,
+  sharePercent,
   suggestSettlements,
   usableParts,
 } from '@app/shared';
+
+import type { LedgerTag } from './tags.js';
 
 /**
  * Everything the PDF says, worked out without jsPDF or the DOM so it can be
@@ -59,6 +63,8 @@ export interface InsightsSection {
   summary: string;
   /** [category, amount, share of total]. Largest first, uncategorized last. */
   categoryRows: [string, string, string][];
+  /** Category key per categoryRows row, for its colour. */
+  categoryKeys: string[];
   /** [member, share, paid]. Group section only; empty otherwise. */
   memberRows: [string, string, string][];
   /** [date, amount, expenses, categories]. Oldest first. */
@@ -78,7 +84,7 @@ export interface ExportReceipt {
 export interface ExportModel {
   title: string;
   subtitle: string;
-  totals: { spentPaise: number; expenseCount: number; settlementCount: number };
+  totals: { spentPaise: number; expenseCount: number; settlementCount: number; personalPaise: number };
   /** [member, position]. */
   balanceRows: [string, string][];
   /** [from, to, amount]. Empty once everyone is settled. */
@@ -88,6 +94,8 @@ export interface ExportModel {
    * made in several transfers, the split column lists the transfers.
    */
   ledgerRows: [string, string, string, string, string][];
+  /** Tags drawn under each ledger row's description: personal, category, not confirmed. */
+  ledgerTags: LedgerTag[][];
   /** Same order as the ledger, then as attached. Appended at the end, one per page. */
   receipts: ExportReceipt[];
   /** [date, description, amount, deleted by + when]. Not counted anywhere. */
@@ -143,7 +151,7 @@ function insightsSection(
   const insights = computeInsights(expenses, input.members.map((m) => m.id), { memberId });
   if (insights.count === 0) return null;
 
-  const percent = (paise: number) => `${Math.round((paise / insights.totalPaise) * 100)}%`;
+  const percent = (paise: number) => sharePercent(paise, insights.totalPaise);
   const range =
     insights.firstDate === insights.lastDate
       ? `on ${pdfDate(insights.firstDate!, dateFormat)}`
@@ -157,6 +165,7 @@ function insightsSection(
     heading,
     summary: `${what} ${money(insights.totalPaise)}${paid} · ${insights.count} expense${insights.count === 1 ? '' : 's'} ${range}${perDay}`,
     categoryRows: insights.categories.map((c) => [c.label, money(c.paise), percent(c.paise)]),
+    categoryKeys: insights.categories.map((c) => c.key),
     memberRows:
       memberId === null
         ? insights.members
@@ -196,6 +205,8 @@ export function buildExport(input: ExportInput): ExportModel {
   ]);
 
   const ledgerRows: ExportModel['ledgerRows'] = [];
+  const ledgerTags: ExportModel['ledgerTags'] = [];
+  let personalPaise = 0;
   const receipts: ExportReceipt[] = [];
   let spentPaise = 0;
   let settlementCount = 0;
@@ -207,8 +218,18 @@ export function buildExport(input: ExportInput): ExportModel {
       (isSettlement
         ? `${payer} paid ${nameOf(expense.splits[0]?.memberId ?? '')} (settlement)`
         : expense.description) + (expense.unconfirmed ? ' [NOT CONFIRMED]' : '');
+    // The ledger shows the flag as a tag; captions and file names keep it in words.
+    const plain = isSettlement
+      ? `${payer} paid ${nameOf(expense.splits[0]?.memberId ?? '')} (settlement)`
+      : expense.description;
     const category = isSettlement ? null : categoryInfo(expense.category);
-    const described = category?.value ? `${description} · ${category.label}` : description;
+    const personal = isPersonal(expense);
+    if (personal) personalPaise += expense.amountPaise;
+    const tags: LedgerTag[] = [];
+    if (personal) tags.push({ kind: 'personal', label: `Personal · just ${payer}` });
+    if (category?.value) tags.push({ kind: 'category', key: category.key, label: category.label });
+    if (expense.unconfirmed) tags.push({ kind: 'unconfirmed', label: 'Not confirmed' });
+    ledgerTags.push(tags);
     const time = formatTime(expense.time);
     const when = time ? `${pdfDate(expense.date, dateFormat)}\n${time}` : pdfDate(expense.date, dateFormat);
 
@@ -217,7 +238,7 @@ export function buildExport(input: ExportInput): ExportModel {
 
     ledgerRows.push([
       when,
-      expense.note ? `${described}\n${expense.note}` : described,
+      expense.note ? `${plain}\n${expense.note}` : plain,
       payer,
       money(expense.amountPaise),
       isSettlement
@@ -254,10 +275,11 @@ export function buildExport(input: ExportInput): ExportModel {
   return {
     title: input.groupName,
     subtitle: `${input.closed ? 'Closed group' : 'Active group'} · exported ${formatDateTimeOf(input.generatedAt, dateFormat)}`,
-    totals: { spentPaise, expenseCount: expenses.length - settlementCount, settlementCount },
+    totals: { spentPaise, expenseCount: expenses.length - settlementCount, settlementCount, personalPaise },
     balanceRows,
     transferRows,
     ledgerRows,
+    ledgerTags,
     receipts,
     deletedRows,
     groupInsights: insightsSection(input, null, 'Group insights', money, nameOf, dateFormat),

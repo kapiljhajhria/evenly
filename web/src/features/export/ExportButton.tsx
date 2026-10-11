@@ -25,6 +25,7 @@ export function ExportButton({
   label = 'Download PDF',
   variant = 'secondary',
   withZip = false,
+  receiptsOption = false,
   onExported,
 }: {
   groupId: string;
@@ -35,19 +36,34 @@ export function ExportButton({
   label?: string;
   variant?: 'primary' | 'secondary';
   withZip?: boolean;
+  /**
+   * Offer "Include receipts". Off means a short PDF without the receipt
+   * pages. Not offered on the pre-delete download: that copy is the record,
+   * so it always carries them.
+   */
+  receiptsOption?: boolean;
   onExported?: (result: ExportResult) => void;
 }) {
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [busy, setBusy] = useState<Kind | null>(null);
   const [done, setDone] = useState<{ kind: Kind; result: ExportResult & { originals?: number } } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [includeReceipts, setIncludeReceipts] = useState(true);
 
   const run = async (kind: Kind) => {
     setBusy(kind);
     setError(null);
     setDone(null);
     try {
-      const args = { groupId, groupName, closed, balances, members, onProgress: setProgress };
+      const args = {
+        groupId,
+        groupName,
+        closed,
+        balances,
+        members,
+        includeReceipts: receiptsOption ? includeReceipts : true,
+        onProgress: setProgress,
+      };
       const result = kind === 'zip' ? await exportGroupZip(args) : await exportGroupPdf(args);
       setDone({ kind, result });
       onExported?.(result);
@@ -66,6 +82,23 @@ export function ExportButton({
 
   return (
     <div className="space-y-2">
+      {receiptsOption && (
+        <label className="flex items-center gap-2.5 rounded-xl px-1 py-1 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={includeReceipts}
+            onChange={(e) => setIncludeReceipts(e.target.checked)}
+            disabled={busy !== null}
+            className="size-4 accent-brand-600"
+          />
+          <span>
+            Include receipts in the PDF
+            <span className="block text-xs text-slate-500">
+              {includeReceipts ? 'One page per receipt, at the end.' : 'Just the summary and expenses — a smaller file.'}
+            </span>
+          </span>
+        </label>
+      )}
       <Button type="button" variant={variant} onClick={() => run('pdf')} busy={busy === 'pdf'} disabled={busy !== null} className="w-full">
         {busy === 'pdf' ? progressLabel(progress) : label}
       </Button>

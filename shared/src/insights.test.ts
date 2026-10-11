@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeInsights, type InsightExpense } from './insights.js';
+import { computeInsights, sharePercent, type InsightExpense } from './insights.js';
 import { UNCATEGORIZED } from './category.js';
 
 const expense = (overrides: Partial<InsightExpense>): InsightExpense => ({
@@ -134,5 +134,14 @@ describe('computeInsights — empty', () => {
     const insights = computeInsights([], ['a']);
     expect(insights).toMatchObject({ totalPaise: 0, count: 0, spanDays: 0, firstDate: null, days: [] });
     expect(insights.members).toEqual([{ memberId: 'a', paidPaise: 0, sharePaise: 0 }]);
+  });
+});
+
+describe('sharePercent', () => {
+  it('rounds to whole percents, never showing a real share as 0%', () => {
+    expect(sharePercent(47, 100)).toBe('47%');
+    expect(sharePercent(1, 1000)).toBe('<1%');
+    expect(sharePercent(0, 1000)).toBe('0%');
+    expect(sharePercent(5, 0)).toBe('0%');
   });
 });

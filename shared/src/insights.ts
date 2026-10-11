@@ -22,6 +22,27 @@ export interface InsightExpense {
   deletedAt?: unknown;
 }
 
+/**
+ * One person paid, for themselves only. It moves no balance but still counts
+ * as spending, so the list and the PDF mark it — nobody should mistake it for
+ * a shared cost.
+ */
+export function isPersonal(entry: {
+  type: string;
+  paidBy: string;
+  splits: readonly { memberId: string; owedPaise: number }[];
+}): boolean {
+  const owing = entry.splits.filter((s) => s.owedPaise > 0);
+  return entry.type === 'expense' && owing.length === 1 && owing[0]!.memberId === entry.paidBy;
+}
+
+/** `47%`; anything above zero that rounds away reads `<1%`, never `0%`. */
+export function sharePercent(part: number, total: number): string {
+  if (total <= 0 || part <= 0) return '0%';
+  const rounded = Math.round((part / total) * 100);
+  return rounded === 0 ? '<1%' : `${rounded}%`;
+}
+
 export interface MemberSpend {
   memberId: string;
   /** Paid out of their own pocket. */

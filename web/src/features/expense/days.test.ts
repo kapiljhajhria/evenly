@@ -78,7 +78,8 @@ describe('involvementOf', () => {
   });
 
   it('never treats a payment as personal', () => {
-    expect(isPersonal({ type: 'settlement', paidBy: 'a', amountPaise: 100, splits: [{ memberId: 'a', owedPaise: 100 }] })).toBe(false);
+    const payment = { type: 'settlement', paidBy: 'a', amountPaise: 100, splits: [{ memberId: 'a', owedPaise: 100 }] };
+    expect(isPersonal(payment)).toBe(false);
   });
 
   it('describes payments from either side', () => {

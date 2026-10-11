@@ -12,6 +12,7 @@ import {
   type ExportModel,
   type InsightsSection,
 } from './model.js';
+import { categoryColor, FAINT, INK, MARIGOLD, MUTED, OWED, OWES, PAPER, RULE, tagStyle, type LedgerTag, type Rgb } from './tags.js';
 import { insertionIndices, receiptKind } from '../receipt/kind.js';
 import { usePreferences } from '../../stores/preferences.js';
 
@@ -27,6 +28,8 @@ type ExportArgs = {
   closed: boolean;
   balances: BalanceMap;
   members: { id: string; name: string; uid?: string | null }[];
+  /** Receipt pages at the end of the PDF. On unless switched off; the ZIP keeps its originals either way. */
+  includeReceipts?: boolean;
   onProgress?: (progress: ExportProgress) => void;
 };
 
@@ -153,13 +156,14 @@ async function buildGroupPdf(
   const pageHeight = doc.internal.pageSize.getHeight();
   const lastY = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
 
-  writeSummary(doc, autoTable, model, lastY, font, fonts !== null);
+  const includeReceipts = args.includeReceipts ?? true;
+  writeSummary(doc, autoTable, model, lastY, font, fonts !== null, includeReceipts);
 
   let missingReceipts = 0;
   let pdfLib: PdfLib | null = null;
   const attachments: PdfAttachment[] = [];
 
-  for (const [index, receipt] of model.receipts.entries()) {
+  for (const [index, receipt] of (includeReceipts ? model.receipts : []).entries()) {
     onProgress?.({ step: 'receipts', done: index, total: model.receipts.length });
     doc.addPage();
     doc.setFontSize(10);
@@ -302,11 +306,139 @@ async function loadReceiptPdf(pdfLib: PdfLib, path: string): Promise<LoadedPdf> 
 type Doc = InstanceType<typeof import('jspdf').jsPDF>;
 type AutoTable = typeof import('jspdf-autotable').default;
 
-const BASE_TABLE_STYLE = {
-  styles: { fontSize: 9, cellPadding: 4, textColor: [15, 23, 42] as [number, number, number] },
-  headStyles: { fillColor: [15, 23, 42] as [number, number, number], textColor: 255 },
-  margin: { left: MARGIN, right: MARGIN },
+type CellHook = import('jspdf-autotable').CellHookData;
+
+const PAD = 5;
+
+const TABLE_BASE = {
+  theme: 'plain' as const,
+  styles: { fontSize: 9, cellPadding: PAD, textColor: INK, lineColor: RULE, valign: 'top' as const },
+  headStyles: { fillColor: INK, textColor: [255, 255, 255] as Rgb, fontStyle: 'bold' as const, fontSize: 8.5 },
+  alternateRowStyles: { fillColor: PAPER },
+  margin: { left: MARGIN, right: MARGIN, top: MARGIN, bottom: MARGIN },
 };
+
+type TableStyle = typeof TABLE_BASE & { styles: typeof TABLE_BASE.styles & { font: string } };
+
+/** Right-aligned numeric columns, headings included. */
+function rightAligned(columns: number[]) {
+  return {
+    columnStyles: Object.fromEntries(columns.map((c) => [c, { halign: 'right' as const }])),
+    headAlign: (data: CellHook) => {
+      if (data.section === 'head' && columns.includes(data.column.index)) data.cell.styles.halign = 'right';
+    },
+  };
+}
+
+/** A short marigold rule, then the heading — the report's section marker. */
+function sectionHeading(doc: Doc, font: string, title: string, y: number, summary?: string): number {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  doc.setFillColor(...MARIGOLD);
+  doc.rect(MARGIN, y, 22, 2.5, 'F');
+  doc.setFont(font, 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(...INK);
+  doc.text(title, MARGIN, y + 18);
+  doc.setFont(font, 'normal');
+  if (!summary) return y + 28;
+  doc.setFontSize(8.5);
+  doc.setTextColor(...MUTED);
+  const lines = doc.splitTextToSize(summary, pageWidth - MARGIN * 2) as string[];
+  doc.text(lines, MARGIN, y + 31);
+  return y + 31 + lines.length * 10 + 4;
+}
+
+/** Start a section on a fresh page when its heading would sit at the very bottom. */
+function sectionTop(doc: Doc, after: number, need = 110): number {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  if (after + need > pageHeight - MARGIN) {
+    doc.addPage();
+    return MARGIN;
+  }
+  return after;
+}
+
+const TAG_SIZE = 7;
+const TAG_HEIGHT = 11;
+const TAG_GAP = 4;
+
+function tagWidth(doc: Doc, tag: LedgerTag): number {
+  doc.setFontSize(TAG_SIZE);
+  return doc.getTextWidth(tag.label) + 10;
+}
+
+/** How many lines of tags fit across `width`. */
+function tagLines(doc: Doc, tags: LedgerTag[], width: number): number {
+  let lines = 1;
+  let x = 0;
+  for (const tag of tags) {
+    const w = tagWidth(doc, tag);
+    if (x > 0 && x + w > width) {
+      lines += 1;
+      x = 0;
+    }
+    x += w + TAG_GAP;
+  }
+  return tags.length === 0 ? 0 : lines;
+}
+
+function drawTags(doc: Doc, font: string, tags: LedgerTag[], left: number, top: number, width: number): void {
+  let x = left;
+  let y = top;
+  doc.setFont(font, 'bold');
+  for (const tag of tags) {
+    const w = tagWidth(doc, tag);
+    if (x > left && x + w > left + width) {
+      x = left;
+      y += TAG_HEIGHT + 3;
+    }
+    const style = tagStyle(tag);
+    if (style.outline) {
+      doc.setDrawColor(...style.fill);
+      doc.setLineWidth(0.7);
+      doc.roundedRect(x, y, w, TAG_HEIGHT, TAG_HEIGHT / 2, TAG_HEIGHT / 2, 'S');
+    } else {
+      doc.setFillColor(...style.fill);
+      doc.roundedRect(x, y, w, TAG_HEIGHT, TAG_HEIGHT / 2, TAG_HEIGHT / 2, 'F');
+    }
+    doc.setFontSize(TAG_SIZE);
+    doc.setTextColor(...style.text);
+    doc.text(tag.label, x + 5, y + TAG_HEIGHT / 2, { baseline: 'middle' });
+    x += w + TAG_GAP;
+  }
+  doc.setFont(font, 'normal');
+}
+
+/** The headline figures, as a row of tiles under the title. */
+function figureTiles(doc: Doc, font: string, y: number, tiles: { label: string; value: string; note?: string }[]): number {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const gap = 8;
+  const width = (pageWidth - MARGIN * 2 - gap * (tiles.length - 1)) / tiles.length;
+  const height = 50;
+  tiles.forEach((tile, i) => {
+    const x = MARGIN + i * (width + gap);
+    doc.setFillColor(...PAPER);
+    doc.setDrawColor(...RULE);
+    doc.setLineWidth(0.6);
+    doc.roundedRect(x, y, width, height, 5, 5, 'FD');
+    doc.setFont(font, 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...MUTED);
+    doc.text(tile.label.toUpperCase(), x + 9, y + 14, { charSpace: 0.4 });
+    doc.setFont(font, 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(...INK);
+    doc.text(tile.value, x + 9, y + 31);
+    if (tile.note) {
+      doc.setFont(font, 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(...MUTED);
+      doc.text(tile.note, x + 9, y + 42);
+    }
+  });
+  doc.setFont(font, 'normal');
+  return y + height;
+}
 
 function writeSummary(
   doc: Doc,
@@ -315,135 +447,198 @@ function writeSummary(
   lastY: () => number,
   font: string,
   rupeeSign: boolean,
+  includeReceipts: boolean,
 ): void {
-  const TABLE_STYLE = { ...BASE_TABLE_STYLE, styles: { ...BASE_TABLE_STYLE.styles, font } };
-  doc.setFontSize(20);
-  doc.setTextColor(15, 23, 42);
-  doc.text(model.title, MARGIN, MARGIN + 10);
-  doc.setFontSize(10);
-  doc.setTextColor(100, 116, 139);
-  doc.text(model.subtitle, MARGIN, MARGIN + 28);
+  const TABLE: TableStyle = { ...TABLE_BASE, styles: { ...TABLE_BASE.styles, font } };
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const money = (paise: number) => pdfMoney(paise, rupeeSign);
 
-  const { spentPaise, expenseCount, settlementCount } = model.totals;
-  doc.setTextColor(15, 23, 42);
-  doc.text(
-    `Total spent ${pdfMoney(spentPaise, rupeeSign)} across ${expenseCount} expense${expenseCount === 1 ? '' : 's'}` +
-      (settlementCount > 0 ? ` · ${settlementCount} settlement${settlementCount === 1 ? '' : 's'}` : '') +
-      (model.receipts.length > 0 ? ` · ${model.receipts.length} receipt${model.receipts.length === 1 ? '' : 's'} at the end` : ''),
-    MARGIN,
-    MARGIN + 46,
-  );
+  // Masthead: the marigold band, the group, and when it was exported.
+  doc.setFillColor(...MARIGOLD);
+  doc.rect(0, 0, pageWidth, 6, 'F');
+  doc.setFont(font, 'bold');
+  doc.setFontSize(22);
+  doc.setTextColor(...INK);
+  doc.text(model.title, MARGIN, MARGIN + 14);
+  doc.setFont(font, 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...MUTED);
+  doc.text(model.subtitle, MARGIN, MARGIN + 30);
 
+  const { spentPaise, expenseCount, settlementCount, personalPaise } = model.totals;
+  const receiptsNote =
+    model.receipts.length === 0 ? 'none attached' : includeReceipts ? 'at the end' : 'not included in this copy';
+  let y = figureTiles(doc, font, MARGIN + 44, [
+    {
+      label: 'Total spent',
+      value: money(spentPaise),
+      note: personalPaise > 0 ? `incl. ${money(personalPaise)} personal` : undefined,
+    },
+    { label: 'Expenses', value: String(expenseCount) },
+    { label: 'Payments', value: String(settlementCount), note: 'between members' },
+    { label: 'Receipts', value: String(model.receipts.length), note: receiptsNote },
+  ]);
+
+  y = sectionHeading(doc, font, 'Balances', y + 26);
   autoTable(doc, {
-    ...TABLE_STYLE,
-    startY: MARGIN + 62,
+    ...TABLE,
+    startY: y,
     head: [['Member', 'Balance']],
     body: model.balanceRows,
+    didParseCell: (data: CellHook) => {
+      if (data.section !== 'body' || data.column.index !== 1) return;
+      const text = String(data.cell.raw ?? '');
+      if (text.startsWith('owes')) data.cell.styles.textColor = OWES;
+      else if (text.startsWith('is owed')) data.cell.styles.textColor = OWED;
+      else data.cell.styles.textColor = MUTED;
+    },
   });
 
   if (model.transferRows.length > 0) {
+    const align = rightAligned([2]);
     autoTable(doc, {
-      ...TABLE_STYLE,
-      startY: lastY() + 16,
+      ...TABLE,
+      startY: lastY() + 10,
       head: [['To settle: from', 'to', 'amount']],
       body: model.transferRows,
-      columnStyles: { 2: { halign: 'right' } },
+      columnStyles: align.columnStyles,
+      didParseCell: align.headAlign,
     });
   }
 
   for (const section of [model.groupInsights, model.myInsights]) {
-    if (section) writeInsights(doc, autoTable, section, lastY, TABLE_STYLE);
+    if (section) writeInsights(doc, autoTable, section, lastY, TABLE, font);
   }
 
+  // The full ledger: description on top, its tags drawn underneath.
+  y = sectionTop(doc, lastY() + 30);
+  y = sectionHeading(
+    doc,
+    font,
+    'Every expense',
+    y,
+    'Oldest first. Tags: category, Personal (paid by one person, for themselves only — not a shared cost), Not confirmed.',
+  );
+  const DESCRIPTION = 1;
+  const descriptionWidth = pageWidth - MARGIN * 2 - (62 + 70 + 70 + 120);
+  const ledgerAlign = rightAligned([3]);
   autoTable(doc, {
-    ...TABLE_STYLE,
-    startY: lastY() + 16,
+    ...TABLE,
+    startY: y,
     head: [['Date', 'Description', 'Paid by', 'Amount', 'Split']],
     body: model.ledgerRows.length > 0 ? model.ledgerRows : [['', 'No expenses recorded', '', '', '']],
     columnStyles: {
       0: { cellWidth: 62 },
       2: { cellWidth: 70 },
       3: { cellWidth: 70, halign: 'right' },
-      4: { cellWidth: 120 },
+      4: { cellWidth: 120, textColor: MUTED, fontSize: 8 },
+    },
+    didParseCell: (data: CellHook) => {
+      ledgerAlign.headAlign(data);
+      if (data.section !== 'body' || data.column.index !== DESCRIPTION) return;
+      const tags = model.ledgerTags[data.row.index] ?? [];
+      const lines = tagLines(doc, tags, descriptionWidth - PAD * 2);
+      if (lines > 0) {
+        data.cell.styles.cellPadding = { top: PAD, right: PAD, left: PAD, bottom: PAD + 4 + lines * (TAG_HEIGHT + 3) };
+      }
+    },
+    didDrawCell: (data: CellHook) => {
+      if (data.section !== 'body' || data.column.index !== DESCRIPTION) return;
+      const tags = model.ledgerTags[data.row.index] ?? [];
+      if (tags.length === 0) return;
+      // Straight under the description's own lines, however tall the row is.
+      const textLines = Array.isArray(data.cell.text) ? data.cell.text.length : 1;
+      const lineHeight = Number(data.cell.styles.fontSize) * doc.getLineHeightFactor();
+      const top = data.cell.y + PAD + textLines * lineHeight + 3;
+      drawTags(doc, font, tags, data.cell.x + PAD, top, data.cell.width - PAD * 2);
     },
   });
 
   if (model.deletedRows.length > 0) {
+    y = sectionTop(doc, lastY() + 30, 80);
+    y = sectionHeading(doc, font, 'Deleted entries', y, 'Not counted anywhere above. Kept so the record shows what was removed, and by whom.');
+    const align = rightAligned([2]);
     autoTable(doc, {
-      ...TABLE_STYLE,
-      startY: lastY() + 16,
-      head: [['Deleted entries — not counted above', '', 'Amount', 'Deleted by']],
-      headStyles: { fillColor: [153, 27, 27], textColor: 255 },
+      ...TABLE,
+      startY: y,
+      head: [['Date', 'Description', 'Amount', 'Deleted by']],
+      headStyles: { ...TABLE.headStyles, fillColor: [153, 27, 27] as Rgb },
       body: model.deletedRows,
       columnStyles: { 0: { cellWidth: 62 }, 2: { cellWidth: 70, halign: 'right' }, 3: { cellWidth: 120 } },
+      didParseCell: align.headAlign,
     });
   }
 }
 
-/** A heading and summary line, then the category, member and day tables. */
+/** Heading and summary, then the category, member and day tables. */
 function writeInsights(
   doc: Doc,
   autoTable: AutoTable,
   section: InsightsSection,
   lastY: () => number,
-  tableStyle: typeof BASE_TABLE_STYLE,
+  table: TableStyle,
+  font: string,
 ): void {
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  let y = lastY() + 32;
-  // Keep the heading with at least the start of its first table.
-  if (y + 90 > pageHeight - MARGIN) {
-    doc.addPage();
-    y = MARGIN + 10;
-  }
-  doc.setFontSize(14);
-  doc.setTextColor(15, 23, 42);
-  doc.text(section.heading, MARGIN, y);
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-  const summary = doc.splitTextToSize(section.summary, pageWidth - MARGIN * 2) as string[];
-  doc.text(summary, MARGIN, y + 15);
-  const startY = y + 15 + summary.length * 11 + 4;
+  const y = sectionHeading(doc, font, section.heading, sectionTop(doc, lastY() + 30), section.summary);
 
-  const right = { halign: 'right' as const };
-  // Column headings follow their numbers to the right.
-  const alignHead = (columns: number[]) => ({
-    didParseCell: (data: { section: string; column: { index: number }; cell: { styles: { halign: string } } }) => {
-      if (data.section === 'head' && columns.includes(data.column.index)) data.cell.styles.halign = 'right';
-    },
-  });
+  // A swatch before each category, the same colour as its tag in the ledger.
+  const SWATCH = 7;
+  const categoryAlign = rightAligned([1, 2]);
   autoTable(doc, {
-    ...tableStyle,
-    startY,
+    ...table,
+    startY: y,
     head: [['By category', 'Amount', 'Share']],
     body: section.categoryRows,
-    columnStyles: { 1: { cellWidth: 90, ...right }, 2: { cellWidth: 60, ...right } },
-    ...alignHead([1, 2]),
+    columnStyles: { ...categoryAlign.columnStyles, 1: { cellWidth: 90, halign: 'right' }, 2: { cellWidth: 60, halign: 'right' } },
+    didParseCell: (data: CellHook) => {
+      categoryAlign.headAlign(data);
+      if (data.section === 'body' && data.column.index === 0) {
+        data.cell.styles.cellPadding = { top: PAD, right: PAD, bottom: PAD, left: PAD + SWATCH + 6 };
+      }
+    },
+    didDrawCell: (data: CellHook) => {
+      if (data.section !== 'body' || data.column.index !== 0) return;
+      const key = section.categoryKeys[data.row.index];
+      if (!key) return;
+      doc.setFillColor(...categoryColor(key).fill);
+      doc.setDrawColor(...categoryColor(key).text);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(data.cell.x + PAD, data.cell.y + data.cell.height / 2 - SWATCH / 2, SWATCH, SWATCH, 2, 2, 'FD');
+    },
   });
+
   if (section.memberRows.length > 0) {
+    const align = rightAligned([1, 2]);
     autoTable(doc, {
-      ...tableStyle,
-      startY: lastY() + 12,
+      ...table,
+      startY: lastY() + 10,
       head: [['By member', 'Share of the bills', 'Paid']],
       body: section.memberRows,
-      columnStyles: { 1: { cellWidth: 110, ...right }, 2: { cellWidth: 90, ...right } },
-      ...alignHead([1, 2]),
+      columnStyles: { 1: { cellWidth: 110, halign: 'right' }, 2: { cellWidth: 90, halign: 'right' } },
+      didParseCell: align.headAlign,
     });
   }
+
+  const dayAlign = rightAligned([1, 2]);
   autoTable(doc, {
-    ...tableStyle,
-    startY: lastY() + 12,
+    ...table,
+    startY: lastY() + 10,
     head: [['By day', 'Amount', 'Expenses', 'Categories']],
     body: section.dayRows,
-    columnStyles: { 0: { cellWidth: 70 }, 1: { cellWidth: 90, ...right }, 2: { cellWidth: 55, ...right } },
-    ...alignHead([1, 2]),
+    columnStyles: {
+      0: { cellWidth: 70 },
+      1: { cellWidth: 90, halign: 'right' },
+      2: { cellWidth: 55, halign: 'right' },
+      3: { textColor: MUTED },
+    },
+    didParseCell: dayAlign.headAlign,
   });
 }
 
 function addPageNumbers(doc: Doc, pageWidth: number, pageHeight: number): void {
   const pages = doc.getNumberOfPages();
   doc.setFontSize(8);
-  doc.setTextColor(148, 163, 184);
+  doc.setTextColor(...FAINT);
   for (let page = 1; page <= pages; page++) {
     doc.setPage(page);
     doc.text(`Evenly · page ${page} of ${pages}`, pageWidth - MARGIN, pageHeight - 20, { align: 'right' });
