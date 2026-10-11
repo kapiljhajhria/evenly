@@ -1,5 +1,6 @@
 import type { SplitEntry } from './types.js';
 import { formatPaise } from './money.js';
+import { UNUSED_CLOSE_DAYS } from './lifecycle.js';
 
 /**
  * Who gets a push notification for a group event, and what it says. Pure,
@@ -168,7 +169,13 @@ export function notificationsForComment(
   }));
 }
 
-export type GroupLifecycleEvent = 'closing-soon' | 'auto-closed' | 'closed' | 'reopened';
+export type GroupLifecycleEvent =
+  | 'closing-soon'
+  | 'auto-closed'
+  | 'closing-soon-unused'
+  | 'auto-closed-unused'
+  | 'closed'
+  | 'reopened';
 
 /**
  * Closing and reopening concern everyone in the group, so — unlike expense
@@ -184,6 +191,8 @@ export function notificationsForGroup(
   const body = {
     'closing-soon': 'Everyone is settled up, so this group closes automatically tomorrow. Add anything missing before then.',
     'auto-closed': 'Closed automatically — everyone was settled up for a week. It is read-only now.',
+    'closing-soon-unused': `Nothing has been added in ${UNUSED_CLOSE_DAYS} days, so this group closes automatically tomorrow. Add an expense to keep it open.`,
+    'auto-closed-unused': `Closed automatically — no expenses in ${UNUSED_CLOSE_DAYS} days. The creator can reopen it.`,
     closed: `${actor} closed the group — everyone is settled up. It is read-only now.`,
     reopened: `${actor} reopened the group, so expenses can be added again.`,
   }[event];

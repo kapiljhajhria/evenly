@@ -12,7 +12,7 @@ import { EditableGroupName } from './EditableGroupName.js';
 import { ExpenseList } from '../expense/ExpenseList.js';
 import { ExportButton } from '../export/ExportButton.js';
 import { DeleteGroupCard, DeletedGroupPanel } from './DeleteGroupCard.js';
-import { ClosedCard, SettledCard } from './CloseGroupCard.js';
+import { ClosedCard, SettledCard, UnusedGroupNote } from './CloseGroupCard.js';
 import { buildActivity } from '../activity/activity.js';
 import { useActivitySince, useLastSeen } from '../activity/useActivity.js';
 import { WhatsNew } from '../activity/WhatsNew.js';
@@ -140,6 +140,12 @@ export function GroupPage() {
               : null
           }
           closedAtMs={group.closedAt?.toMillis() ?? null}
+          unused={!group.lastExpenseAt}
+        />
+      ) : !group.lastExpenseAt ? (
+        <UnusedGroupNote
+          createdAtMs={group.createdAt?.toMillis() ?? null}
+          reopenedAtMs={group.reopenedAt?.toMillis() ?? null}
         />
       ) : (
         group.balancesZero && (

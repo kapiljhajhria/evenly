@@ -147,4 +147,15 @@ describe('notificationsForGroup', () => {
       'Bilal reopened the group, so expenses can be added again.',
     );
   });
+
+  it('gives groups that were never used their own reason', () => {
+    const soon = notificationsForGroup(group, 'closing-soon-unused', null);
+    expect(soon.map((n) => n.uid).sort()).toEqual(['u-asha', 'u-bilal', 'u-chitra']);
+    expect(soon[0]?.body).toBe(
+      'Nothing has been added in 30 days, so this group closes automatically tomorrow. Add an expense to keep it open.',
+    );
+    expect(notificationsForGroup(group, 'auto-closed-unused', null)[0]?.body).toBe(
+      'Closed automatically — no expenses in 30 days. The creator can reopen it.',
+    );
+  });
 });

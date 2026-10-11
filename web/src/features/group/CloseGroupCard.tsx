@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { autoCloseAtMs, formatDateOf, formatDateTimeOf } from '@app/shared';
+import { autoCloseAtMs, formatDateOf, formatDateTimeOf, UNUSED_CLOSE_DAYS } from '@app/shared';
 import { Button, Card, ErrorNote } from '../../components/ui.js';
 import { useDisplayDateFormat } from '../../stores/preferences.js';
 import { setGroupClosed } from './api.js';
@@ -9,7 +9,8 @@ const messageOf = (err: unknown) => (err as { message?: string }).message ?? 'Th
 /**
  * Open group, everyone settled: say when it will close on its own, and let
  * the creator close it now. Shown only once there has been at least one
- * expense — a brand-new group is "settled" trivially and never auto-closes.
+ * expense — a brand-new group is "settled" trivially; UnusedGroupNote
+ * covers that case.
  */
 export function SettledCard({
   groupId,
@@ -86,18 +87,50 @@ export function SettledCard({
   );
 }
 
+/**
+ * Open group that has never had an expense: in its last week, say when it
+ * will close on its own. Earlier than that it would only be noise on a group
+ * someone is still setting up.
+ */
+export function UnusedGroupNote({ createdAtMs, reopenedAtMs }: { createdAtMs: number | null; reopenedAtMs: number | null }) {
+  const dateFormat = useDisplayDateFormat();
+  const closesAt = autoCloseAtMs({
+    status: 'active',
+    balancesZero: true,
+    zeroSinceMs: null,
+    lastExpenseAtMs: null,
+    createdAtMs,
+    reopenedAtMs,
+  });
+  const DAY = 24 * 60 * 60 * 1000;
+  if (closesAt === null || closesAt - Date.now() > 7 * DAY) return null;
+  // Already past the month (an old group when this rule shipped): it still
+  // gets a night's notice first, so it closes tomorrow at the earliest.
+  const shownAt = Math.max(closesAt, Date.now() + DAY);
+  return (
+    <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+      No expenses yet. If nothing is added, this group closes automatically around{' '}
+      <span className="font-medium">{formatDateOf(new Date(shownAt), dateFormat)}</span>. Add an expense to keep it
+      open.
+    </p>
+  );
+}
+
 /** Closed group: who closed it and when, and — for the creator — a way back. */
 export function ClosedCard({
   groupId,
   isCreator,
   closedByName,
   closedAtMs,
+  unused = false,
 }: {
   groupId: string;
   isCreator: boolean;
   /** null = closed automatically. */
   closedByName: string | null;
   closedAtMs: number | null;
+  /** It never had an expense, so it closed for that reason (lifecycle.ts). */
+  unused?: boolean;
 }) {
   const dateFormat = useDisplayDateFormat();
   const [busy, setBusy] = useState(false);
@@ -109,7 +142,11 @@ export function ClosedCard({
       <div className="text-sm text-slate-600">
         <p className="font-semibold text-slate-800">This group is closed</p>
         <p>
-          {closedByName ? `Closed by ${closedByName}${when}` : `Closed automatically${when}, a week after everyone settled up`}
+          {closedByName
+            ? `Closed by ${closedByName}${when}`
+            : unused
+              ? `Closed automatically${when}, after ${UNUSED_CLOSE_DAYS} days with no expenses`
+              : `Closed automatically${when}, a week after everyone settled up`}
           . It is read-only.
         </p>
       </div>

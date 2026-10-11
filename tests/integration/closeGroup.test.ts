@@ -126,6 +126,22 @@ describe('setGroupClosed', () => {
     expect(push?.['body']).toBe('Asha reopened the group, so expenses can be added again.');
   });
 
+  it('reopens a group that never had an expense without making it look used', async () => {
+    await groupRef().update({
+      status: 'closed', closedAt: Timestamp.now(), closedBy: null,
+      lastExpenseAt: FieldValue.delete(), zeroSince: FieldValue.delete(),
+    });
+    const before = Date.now();
+    const result = await call(creator, { groupId, closed: false });
+    expect(result.ok, result.message).toBe(true);
+
+    const group = (await groupRef().get()).data()!;
+    expect(group['status']).toBe('active');
+    // Still unused, so its 30-day clock restarts from the reopen instead.
+    expect(group['lastExpenseAt']).toBeUndefined();
+    expect((group['reopenedAt'] as Timestamp).toMillis()).toBeGreaterThanOrEqual(before - 1000);
+  });
+
   it('does nothing — and notifies nobody — when already in that state', async () => {
     const result = await call(creator, { groupId, closed: false });
     expect(result.ok && result.result?.['changed']).toBe(false);

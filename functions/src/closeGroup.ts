@@ -47,8 +47,13 @@ export const setGroupClosed = onCall(async (request) => {
       status: 'active',
       closedAt: null,
       closedBy: null,
-      // Restart the quiet week, or tonight's autoClose closes it again.
-      lastExpenseAt: FieldValue.serverTimestamp(),
+      // Restart the clock, or tonight's autoClose closes it again: the quiet
+      // week for a group with expenses, the unused-group month for one
+      // without — which must stay without `lastExpenseAt`, or it would be
+      // treated as used and never close again.
+      ...(group.lastExpenseAt
+        ? { lastExpenseAt: FieldValue.serverTimestamp() }
+        : { reopenedAt: FieldValue.serverTimestamp() }),
       closeNoticeAt: null,
     });
     return true;

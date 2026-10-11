@@ -41,9 +41,9 @@ To hit real Firebase instead, put your web app config in `web/.env.local`
 ## Tests
 
 ```bash
-npm test                 # pure logic in shared/ and web/ (263 tests, no emulator)
+npm test                 # pure logic in shared/ and web/ (269 tests, no emulator)
 npm run test:rules       # Firestore + Storage rules vs the emulators (180 tests)
-npm run test:integration # functions + real client modules (96 tests)
+npm run test:integration # functions + real client modules (97 tests)
 npm run test:all         # all of the above
 npm run typecheck        # all three workspaces
 ```
@@ -209,7 +209,10 @@ a `pending` older than 15 minutes is shown as failed), client-side PDF export
 Also done: close flow — a "settled up, closes around …" card, creator-only
 Close now / Reopen (`setGroupClosed`; reopening restarts the quiet week so the
 nightly `autoClose` does not re-close it), and a day's notice before
-auto-close. The timing rules live in `shared/src/lifecycle.ts`. Install
+auto-close. A group that never had an expense closes after 30 days (from
+creation, or its last reopen — `reopenedAt`, so it stays "unused"), with
+the same notice and a note on the group page in its last week. The timing
+rules live in `shared/src/lifecycle.ts`. Install
 prompt (one tap on Android/desktop, Share-sheet steps on iPhone) on the home
 page and in Settings, and an honest offline mode. "Download all files (.zip)"
 next to the PDF: the same report plus every receipt as its original file

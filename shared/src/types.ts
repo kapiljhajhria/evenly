@@ -121,6 +121,11 @@ export interface Group<TS = TimestampLike> {
   closedBy?: Uid | null;
   /** When the "closes tomorrow" notice went out for the current quiet week. */
   closeNoticeAt?: TS | null;
+  /**
+   * Set when a group with no expenses is reopened: restarts its
+   * UNUSED_CLOSE_DAYS clock (see lifecycle.ts). Absent otherwise.
+   */
+  reopenedAt?: TS | null;
   /** Set while soft-deleted. Absent on every group never deleted. */
   deletedAt?: TS | null;
   deletedBy?: Uid | null;

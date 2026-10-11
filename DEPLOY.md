@@ -350,7 +350,11 @@ Walk the verification steps in §9 after any index change.
   change the mark in `favicon.svg`.
 - **Storage rules are deployed but unexercised** — the receipt upload UI is not
   built yet (brief §9 step 5). Nothing writes to Storage until it is.
-- **`autoClose` runs daily at 03:00 IST.** It will not touch groups that never
-  had an expense.
+- **`autoClose` runs daily at 03:00 IST.** Settled groups close after a quiet
+  week; groups that never had an expense close 30 days after creation (or
+  their last reopen). Both get a day's notice. The unused-group pass needs
+  the `groups (status, createdAt)` index from `firestore.indexes.json` —
+  `npm run deploy:rules` deploys it; let it finish building before the next
+  03:00 run, or that night's pass fails (it retries the next night).
 - **Rolling back hosting**: Hosting → Release history → Rollback, or
   `npx firebase hosting:rollback`.
