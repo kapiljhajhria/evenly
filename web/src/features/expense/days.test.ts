@@ -57,8 +57,10 @@ describe('involvementOf', () => {
     expect(involvementOf(expense, null)).toEqual({ kind: 'none' });
   });
 
-  it('is nothing for a payer who covered only themselves', () => {
-    expect(involvementOf({ ...expense, splits: [{ memberId: 'a', owedPaise: 30000 }] }, 'a')).toEqual({ kind: 'none' });
+  it('is your own spend when you paid and the whole share is yours', () => {
+    const own = { ...expense, splits: [{ memberId: 'a', owedPaise: 30000 }] };
+    expect(involvementOf(own, 'a')).toEqual({ kind: 'own', paise: 30000 });
+    expect(involvementOf(own, 'b')).toEqual({ kind: 'none' });
   });
 
   it('describes payments from either side', () => {

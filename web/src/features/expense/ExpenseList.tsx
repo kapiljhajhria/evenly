@@ -315,6 +315,7 @@ const PART_STYLE: Record<Exclude<Involvement['kind'], 'none'>, { label: string; 
   owe: { label: 'you owe', tone: 'text-orange-600' },
   paid: { label: 'you paid', tone: 'text-slate-700' },
   received: { label: 'you got', tone: 'text-emerald-600' },
+  own: { label: 'just you', tone: 'text-slate-700' },
 };
 
 /** The right-hand column: what this entry means for you. */

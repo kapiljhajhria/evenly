@@ -46,6 +46,8 @@ export type Involvement =
   | { kind: 'owe'; paise: number }
   | { kind: 'paid'; paise: number }
   | { kind: 'received'; paise: number }
+  /** You paid, and it was all your own share: moves no balance, but it is yours. */
+  | { kind: 'own'; paise: number }
   | { kind: 'none' };
 
 /** What an entry means for you, Splitwise-style. */
@@ -62,7 +64,7 @@ export function involvementOf(
   }
   if (entry.paidBy === myMemberId) {
     const lent = entry.amountPaise - mine;
-    return lent > 0 ? { kind: 'lent', paise: lent } : { kind: 'none' };
+    return lent > 0 ? { kind: 'lent', paise: lent } : { kind: 'own', paise: entry.amountPaise };
   }
   return mine > 0 ? { kind: 'owe', paise: mine } : { kind: 'none' };
 }
