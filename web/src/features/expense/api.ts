@@ -167,6 +167,9 @@ export const updateExpense = httpsCallable<
   { changed: string[] }
 >(functions, 'updateExpense');
 
+/** Follows a short map share link (maps.app.goo.gl/…) server-side; see followMapRedirects. */
+export const resolveMapLink = httpsCallable<{ url: string }, { url: string }>(functions, 'resolveMapLink');
+
 /**
  * Soft delete: the expense leaves the balances and the main list but stays
  * stored, shown on the Deleted page with who deleted it and when, and can be

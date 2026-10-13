@@ -192,3 +192,38 @@ export function computePlaces(expenses: readonly PlaceExpense[], scope: InsightS
     days: [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
+
+export interface JourneyStop {
+  lat: number;
+  lng: number;
+  firstDate: string;
+  lastDate: string;
+  /** What was spent, at mapped places, on the days merged into this stop. */
+  paise: number;
+}
+
+/** Consecutive days closer than this are one stop — a few days in one town. */
+export const JOURNEY_MERGE_METRES = 2_000;
+
+/**
+ * The trip as a line: one stop per day, in date order. Expenses aren't a GPS
+ * trail, so joining every spend would zig-zag between cafés and across the
+ * map whenever the group splits up. A day is placed at its biggest spend —
+ * usually the stay or the main outing — and consecutive days in the same
+ * area merge so the line only moves when the group did.
+ */
+export function journeyStops(days: readonly PlaceDay[]): JourneyStop[] {
+  const stops: JourneyStop[] = [];
+  for (const day of days) {
+    const anchor = day.points.reduce<PlacePoint | null>((top, p) => (top && top.paise >= p.paise ? top : p), null);
+    if (!anchor) continue;
+    const last = stops[stops.length - 1];
+    if (last && distanceMetres(last, anchor) <= JOURNEY_MERGE_METRES) {
+      last.lastDate = day.date;
+      last.paise += day.paise;
+      continue;
+    }
+    stops.push({ lat: anchor.lat, lng: anchor.lng, firstDate: day.date, lastDate: day.date, paise: day.paise });
+  }
+  return stops;
+}

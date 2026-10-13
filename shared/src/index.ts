@@ -9,3 +9,4 @@ export * from './receipts.js';
 export * from './category.js';
 export * from './insights.js';
 export * from './places.js';
+export * from './mapLinks.js';

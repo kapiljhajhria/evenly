@@ -149,7 +149,7 @@ function parseCoordPair(text: string): ParsedLocation | null {
 }
 
 /** Share links that only resolve by following a redirect, which CORS blocks. */
-const SHORT_LINK_HOSTS = ['maps.app.goo.gl', 'goo.gl', 'g.co', 'maps.apple'];
+export const SHORT_LINK_HOSTS = ['maps.app.goo.gl', 'goo.gl', 'g.co', 'maps.apple'];
 
 function decodeSegment(segment: string): string {
   try {
@@ -185,7 +185,7 @@ function parseMapsUrl(url: URL): ParsedLocation {
   const pin = /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/.exec(href);
   if (pin) return finish(Number(pin[1]), Number(pin[2]), name);
 
-  for (const key of ['ll', 'q', 'query', 'destination', 'daddr', 'sll', 'center']) {
+  for (const key of ['ll', 'coordinate', 'q', 'query', 'destination', 'daddr', 'sll', 'center']) {
     const value = url.searchParams.get(key);
     const parsed = value ? parseCoordPair(value) : null;
     if (parsed?.ok) {

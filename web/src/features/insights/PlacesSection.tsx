@@ -1,8 +1,17 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { DateFormat, Place, PlaceExpense } from '@app/shared';
-import { computePlaces, formatDate, formatPaise, locationsNeeded, mapIsUseful, sharePercent } from '@app/shared';
+import {
+  computePlaces,
+  formatDate,
+  formatPaise,
+  journeyStops,
+  locationsNeeded,
+  mapIsUseful,
+  sharePercent,
+} from '@app/shared';
 import { Card, Spinner } from '../../components/ui.js';
 import { useOnline } from '../../hooks/useOnline.js';
+import { useLazy } from '../../lib/useLazy.js';
 import type { PlacesMapProps } from './PlacesMap.js';
 
 /** As on the rest of the page: ₹5,400 reads faster than ₹5,400.00. */
@@ -38,6 +47,8 @@ export function PlacesSection({
   const [selectedPlace, setSelectedPlace] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [showRoute, setShowRoute] = useState(false);
+  const journey = useMemo(() => journeyStops(places.days), [places.days]);
 
   // A new scope can drop the selected place or day; start fresh rather than point at nothing.
   useEffect(() => {
@@ -75,14 +86,27 @@ export function PlacesSection({
 
   return (
     <Card className="space-y-4">
-      <SectionTitle
-        title="Where it was spent"
-        hint={
-          places.located === places.count
-            ? `${places.places.length} ${places.places.length === 1 ? 'place' : 'places'}, every expense mapped.`
-            : `${places.places.length} ${places.places.length === 1 ? 'place' : 'places'} · ${places.located} of ${places.count} expenses mapped (${money(places.locatedPaise)}).`
-        }
-      />
+      <div className="flex items-start justify-between gap-3">
+        <SectionTitle
+          title="Where it was spent"
+          hint={
+            places.located === places.count
+              ? `${places.places.length} ${places.places.length === 1 ? 'place' : 'places'}, every expense mapped.`
+              : `${places.places.length} ${places.places.length === 1 ? 'place' : 'places'} · ${places.located} of ${places.count} expenses mapped (${money(places.locatedPaise)}).`
+          }
+        />
+        {journey.length >= 2 && (
+          <label className="flex shrink-0 cursor-pointer items-center gap-2 pt-1 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={showRoute}
+              onChange={(e) => setShowRoute(e.target.checked)}
+              className="size-4 accent-brand-600"
+            />
+            Show route
+          </label>
+        )}
+      </div>
 
       <MapSlot
         places={places.places}
@@ -90,6 +114,8 @@ export function PlacesSection({
         selectedDay={selectedDay}
         onSelectPlace={choosePlace}
         labelOf={labelOf}
+        journey={showRoute ? journey : null}
+        dateFormat={dateFormat}
       />
 
       {places.days.length > 1 && (
@@ -149,26 +175,13 @@ export function PlacesSection({
   );
 }
 
-type MapComponent = ComponentType<PlacesMapProps>;
-
 /**
  * Leaflet arrives on demand, and the tiles need a connection. Either missing
  * leaves the list, which still says where the money went.
  */
 function MapSlot(props: PlacesMapProps) {
   const online = useOnline();
-  const [MapView, setMapView] = useState<MapComponent | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let live = true;
-    import('./PlacesMap.js')
-      .then((module) => live && setMapView(() => module.PlacesMap))
-      .catch(() => live && setFailed(true));
-    return () => {
-      live = false;
-    };
-  }, []);
+  const { value: MapView, failed } = useLazy(() => import('./PlacesMap.js').then((m) => m.PlacesMap));
 
   if (!online || failed) {
     return (

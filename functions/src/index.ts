@@ -6,3 +6,4 @@ export { deleteGroup } from './deleteGroup.js';
 export { autoClose } from './autoClose.js';
 export { onCommentCreated, sendTestNotification } from './notifications.js';
 export { setGroupClosed } from './closeGroup.js';
+export { resolveMapLink } from './resolveMapLink.js';

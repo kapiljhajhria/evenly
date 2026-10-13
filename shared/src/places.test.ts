@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computePlaces,
   distanceMetres,
+  journeyStops,
   locationsNeeded,
   mapIsUseful,
   type PlaceExpense,
@@ -107,5 +108,38 @@ describe('mapIsUseful / locationsNeeded', () => {
   ])('%o -> useful %s, needs %i more', (places, useful, needed) => {
     expect(mapIsUseful(places)).toBe(useful);
     expect(locationsNeeded(places)).toBe(needed);
+  });
+});
+
+describe('journeyStops', () => {
+  const point = (lat: number, lng: number, paise: number, date: string) => ({ lat, lng, paise, date, description: '' });
+  const day = (date: string, ...points: ReturnType<typeof point>[]) => ({
+    date,
+    paise: points.reduce((sum, p) => sum + p.paise, 0),
+    points,
+  });
+
+  it('places each day at its biggest spend and merges days in one area', () => {
+    const stops = journeyStops([
+      day('2026-10-01', point(15.5527, 73.7517, 2_400, '2026-10-01'), point(15.549, 73.764, 1_200, '2026-10-01')),
+      // Travel day: the bus leaves Goa, but the guesthouse in Hampi is the big spend.
+      day('2026-10-03', point(15.2993, 74.124, 3_200, '2026-10-03'), point(15.335, 76.46, 6_400, '2026-10-03')),
+      // Still in Hampi, ~1.2km away: same stop.
+      day('2026-10-04', point(15.34, 76.47, 800, '2026-10-04')),
+      day('2026-10-05', point(12.9791, 77.6408, 2_100, '2026-10-05')),
+    ]);
+    expect(stops.map((s) => [s.lat, s.lng, s.firstDate, s.lastDate, s.paise])).toEqual([
+      [15.5527, 73.7517, '2026-10-01', '2026-10-01', 3_600],
+      [15.335, 76.46, '2026-10-03', '2026-10-04', 10_400],
+      [12.9791, 77.6408, '2026-10-05', '2026-10-05', 2_100],
+    ]);
+  });
+
+  it('is a single stop for a group that never left town', () => {
+    const stops = journeyStops([
+      day('2026-10-01', point(12.97, 77.59, 100, '2026-10-01')),
+      day('2026-10-02', point(12.975, 77.595, 100, '2026-10-02')),
+    ]);
+    expect(stops).toHaveLength(1);
   });
 });

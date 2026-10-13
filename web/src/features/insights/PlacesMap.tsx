@@ -1,22 +1,9 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import './places-map.css';
-import type { Place, PlaceDay } from '@app/shared';
-import { formatPaise } from '@app/shared';
-
-/**
- * Raster tiles, chosen at build time. The default is OpenStreetMap's own
- * server, which allows light use with attribution and no key — fine for a
- * group app, but not a promise of capacity. For a keyed provider (MapTiler,
- * Stadia, Thunderforest) set both variables; see DEPLOY.md. Attribution is a
- * licence condition, never optional.
- */
-const TILES =
-  import.meta.env.VITE_MAP_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const ATTRIBUTION =
-  import.meta.env.VITE_MAP_TILE_ATTRIBUTION ||
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+import type { JourneyStop, Place, PlaceDay } from '@app/shared';
+import { formatDate, formatPaise, type DateFormat } from '@app/shared';
+import { addTiles } from '../../lib/mapTiles.js';
 
 const MIN_RADIUS = 7;
 const MAX_RADIUS = 30;
@@ -33,14 +20,18 @@ export interface PlacesMapProps {
   onSelectPlace: (key: string) => void;
   /** Label for a place, shared with the list so both read the same. */
   labelOf: (place: Place) => string;
+  /** The trip as a line, or null to hide it. */
+  journey: JourneyStop[] | null;
+  dateFormat: DateFormat;
 }
 
 /** Loaded on demand from PlacesSection; keeps Leaflet out of the startup bundle. */
-export function PlacesMap({ places, selectedPlace, selectedDay, onSelectPlace, labelOf }: PlacesMapProps) {
+export function PlacesMap({ places, selectedPlace, selectedDay, onSelectPlace, labelOf, journey, dateFormat }: PlacesMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const placeLayer = useRef<L.LayerGroup | null>(null);
   const dayLayer = useRef<L.LayerGroup | null>(null);
+  const journeyLayer = useRef<L.LayerGroup | null>(null);
   const markers = useRef(new Map<string, L.CircleMarker>());
   const select = useRef(onSelectPlace);
   select.current = onSelectPlace;
@@ -55,7 +46,9 @@ export function PlacesMap({ places, selectedPlace, selectedDay, onSelectPlace, l
       zoomControl: true,
       attributionControl: true,
     });
-    L.tileLayer(TILES, { attribution: ATTRIBUTION, maxZoom: 19 }).addTo(instance);
+    addTiles(instance);
+    // Under the circles, so the line never blocks a tap on a place.
+    journeyLayer.current = L.layerGroup().addTo(instance);
     placeLayer.current = L.layerGroup().addTo(instance);
     dayLayer.current = L.layerGroup().addTo(instance);
     map.current = instance;
@@ -124,6 +117,30 @@ export function PlacesMap({ places, selectedPlace, selectedDay, onSelectPlace, l
     });
     // `selectedPlace` is read only to skip re-framing; it must not re-run this.
   }, [selectedDay, places]);
+
+  useEffect(() => {
+    const layer = journeyLayer.current;
+    if (!layer) return;
+    layer.clearLayers();
+    if (!journey || journey.length < 2) return;
+    L.polyline(
+      journey.map((stop) => [stop.lat, stop.lng]),
+      { className: 'journey-line', interactive: false },
+    ).addTo(layer);
+    journey.forEach((stop, index) => {
+      const dates =
+        stop.firstDate === stop.lastDate
+          ? formatDate(stop.firstDate, dateFormat)
+          : `${formatDate(stop.firstDate, dateFormat)} – ${formatDate(stop.lastDate, dateFormat)}`;
+      L.marker([stop.lat, stop.lng], {
+        icon: L.divIcon({ className: 'journey-stop', html: String(index + 1), iconSize: [22, 22] }),
+        keyboard: false,
+        zIndexOffset: 1000,
+      })
+        .bindTooltip(`Stop ${index + 1} · ${dates} · ${formatPaise(stop.paise)}`, { direction: 'top', offset: [0, -10] })
+        .addTo(layer);
+    });
+  }, [journey, dateFormat]);
 
   return (
     <div
