@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Timestamp } from 'firebase/firestore';
-import type { DateFormat, Expense, Member, WithId } from '@app/shared';
-import { categoryInfo, formatDate, formatDateTimeOf, formatPaise, formatTime } from '@app/shared';
+import type { DateFormat, Expense, ExpenseLocation, Member, WithId } from '@app/shared';
+import { categoryInfo, formatDate, formatDateTimeOf, formatPaise, formatTime, locationName } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useExpenseHistory } from '../../hooks/useExpenses.js';
 import { useDisplayDateFormat } from '../../stores/preferences.js';
@@ -240,8 +240,7 @@ function describe(
   if (field === 'time') return formatTime(value as string) ?? String(value);
   if (field === 'date') return formatDate(String(value), dateFormat);
   if (field === 'location') {
-    const name = (value as { name?: string | null }).name;
-    return name || 'a pinned location';
+    return locationName(value as ExpenseLocation) ?? 'a pinned location';
   }
   return String(value);
 }

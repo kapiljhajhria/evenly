@@ -225,9 +225,12 @@ export function ExpenseForm({
         />
       </Field>
 
-      <Field label="Location">
+      {/* Not a <Field>: that is a <label>, and a label forwards every click
+          inside it to its first control — the name box or a button here. */}
+      <div className="space-y-1.5">
+        <span className="text-sm font-medium text-slate-700">Location</span>
         <LocationField capture={locationCapture} />
-      </Field>
+      </div>
 
       {withReceipt && !settlementMode && <ReceiptField value={receipts} onChange={setReceipts} />}
 

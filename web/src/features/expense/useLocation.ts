@@ -8,6 +8,9 @@ export interface LocationCapture {
   status: LocationStatus;
   error: string | null;
   capture: () => void;
+  /** A location entered by hand. */
+  set: (location: ExpenseLocation) => void;
+  rename: (name: string) => void;
   clear: () => void;
 }
 
@@ -65,7 +68,6 @@ export function useLocationCapture(initial: ExpenseLocation | null = null): Loca
           accuracy: Number.isFinite(position.coords.accuracy)
             ? Math.round(position.coords.accuracy)
             : null,
-          // Reserved for a reverse-geocoded label; nothing sets it today.
           name: null,
         });
         setStatus('ready');
@@ -78,11 +80,21 @@ export function useLocationCapture(initial: ExpenseLocation | null = null): Loca
     );
   }, []);
 
+  const set = useCallback((next: ExpenseLocation) => {
+    setLocation(next);
+    setStatus('ready');
+    setError(null);
+  }, []);
+
+  const rename = useCallback((name: string) => {
+    setLocation((current) => (current ? { ...current, name: name || null } : current));
+  }, []);
+
   const clear = useCallback(() => {
     setLocation(null);
     setStatus('idle');
     setError(null);
   }, []);
 
-  return { location, status, error, capture, clear };
+  return { location, status, error, capture, set, rename, clear };
 }

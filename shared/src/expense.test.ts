@@ -11,6 +11,11 @@ import {
   localDateString,
   localTimeString,
   mapsUrl,
+  appleMapsUrl,
+  geoUri,
+  locationName,
+  parseLocationInput,
+  MAX_LOCATION_NAME_LENGTH,
   MAX_PART_NOTE_LENGTH,
   MAX_PARTS,
   normalizeParts,
@@ -72,6 +77,103 @@ describe('mapsUrl', () => {
       'https://www.google.com/maps/search/?api=1&query=19.076,72.8777',
     );
   });
+});
+
+describe('isValidLocation name', () => {
+  it('accepts a short string name', () => {
+    expect(isValidLocation({ lat: 1, lng: 2, accuracy: null, name: 'Toit' })).toBe(true);
+  });
+  it('rejects a non-string or over-long name', () => {
+    expect(isValidLocation({ lat: 1, lng: 2, accuracy: null, name: 42 })).toBe(false);
+    expect(
+      isValidLocation({ lat: 1, lng: 2, accuracy: null, name: 'x'.repeat(MAX_LOCATION_NAME_LENGTH + 1) }),
+    ).toBe(false);
+  });
+});
+
+describe('locationName', () => {
+  it('returns a trimmed name, or null for blank and malformed ones', () => {
+    expect(locationName({ lat: 0, lng: 0, accuracy: null, name: '  Toit ' })).toBe('Toit');
+    expect(locationName({ lat: 0, lng: 0, accuracy: null, name: '   ' })).toBeNull();
+    expect(locationName({ lat: 0, lng: 0, accuracy: null, name: { evil: 1 } as never })).toBeNull();
+  });
+});
+
+describe('map app links', () => {
+  const loc = { lat: 12.9716, lng: 77.5946, accuracy: null, name: 'MG Road' };
+  it('builds a geo: URI with an encoded label', () => {
+    expect(geoUri(loc)).toBe('geo:12.9716,77.5946?q=12.9716,77.5946(MG%20Road)');
+    expect(geoUri({ ...loc, name: null })).toBe('geo:12.9716,77.5946?q=12.9716,77.5946');
+  });
+  it('builds an Apple Maps link', () => {
+    expect(appleMapsUrl(loc)).toBe('https://maps.apple.com/?ll=12.9716,77.5946&q=MG%20Road');
+  });
+});
+
+describe('parseLocationInput', () => {
+  const at = (lat: number, lng: number, name: string | null = null) => ({ ok: true, lat, lng, name });
+
+  it.each([
+    ['12.9716, 77.5946', at(12.9716, 77.5946)],
+    ['12.9716,77.5946', at(12.9716, 77.5946)],
+    ['  -33.8688 151.2093 ', at(-33.8688, 151.2093)],
+    ['12.9716° N, 77.5946° E', at(12.9716, 77.5946)],
+    ['33.8688 S, 151.2093 E', at(-33.8688, 151.2093)],
+    ['77.5946E 12.9716N', at(12.9716, 77.5946)],
+    [`12°58'17.6"N 77°35'40.6"E`, at(12.971556, 77.594611)],
+  ])('reads coordinates %s', (input, expected) => {
+    expect(parseLocationInput(input)).toEqual(expected);
+  });
+
+  it('prefers the place pin over the viewport in a Google place URL', () => {
+    const url =
+      'https://www.google.com/maps/place/Toit+Brewpub/@12.9790,77.6400,17z/data=!3m1!4b1!4m6!3m5!1s0x0:0x0!8m2!3d12.9791!4d77.6408';
+    expect(parseLocationInput(url)).toEqual(at(12.9791, 77.6408, 'Toit Brewpub'));
+  });
+
+  it('falls back to the @ viewport when there is no pin', () => {
+    expect(parseLocationInput('https://www.google.com/maps/@12.97,77.59,15z')).toEqual(at(12.97, 77.59));
+  });
+
+  it('reads query-style Google and Apple links', () => {
+    expect(parseLocationInput('https://www.google.com/maps/search/?api=1&query=19.076,72.8777')).toEqual(
+      at(19.076, 72.8777),
+    );
+    expect(parseLocationInput('https://maps.google.com/?q=19.076,72.8777')).toEqual(at(19.076, 72.8777));
+    expect(parseLocationInput('https://maps.apple.com/?ll=19.076,72.8777&q=Cafe%20Madras')).toEqual(
+      at(19.076, 72.8777, 'Cafe Madras'),
+    );
+  });
+
+  it('reads geo: URIs, including Android\'s 0,0 form', () => {
+    expect(parseLocationInput('geo:19.076,72.8777')).toEqual(at(19.076, 72.8777));
+    expect(parseLocationInput('geo:0,0?q=19.076,72.8777(Cafe%20Madras)')).toEqual(
+      at(19.076, 72.8777, 'Cafe Madras'),
+    );
+  });
+
+  it('finds the link inside shared text', () => {
+    const shared = 'Toit Brewpub\n298 100 Feet Rd\nhttps://www.google.com/maps/@12.97,77.59,15z';
+    expect(parseLocationInput(shared)).toEqual(at(12.97, 77.59));
+  });
+
+  it('round-trips its own links', () => {
+    const loc = { lat: 12.9716, lng: 77.5946, accuracy: null, name: 'MG Road' };
+    expect(parseLocationInput(mapsUrl(loc))).toEqual(at(12.9716, 77.5946));
+    expect(parseLocationInput(appleMapsUrl(loc))).toEqual(at(12.9716, 77.5946, 'MG Road'));
+    expect(parseLocationInput(geoUri(loc))).toEqual(at(12.9716, 77.5946, 'MG Road'));
+  });
+
+  it('flags short share links it cannot follow', () => {
+    expect(parseLocationInput('https://maps.app.goo.gl/AbCdEf123')).toEqual({ ok: false, reason: 'short-link' });
+  });
+
+  it.each(['', 'Toit Brewpub', '91, 0', '12.97, 181', 'https://example.com/foo', 'https://www.google.com/maps/place/Toit'])(
+    'rejects %s',
+    (input) => {
+      expect(parseLocationInput(input)).toEqual({ ok: false, reason: 'unrecognised' });
+    },
+  );
 });
 
 describe('local date and time', () => {

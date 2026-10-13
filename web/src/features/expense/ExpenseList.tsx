@@ -6,7 +6,7 @@ import { useDisplayDateFormat } from '../../stores/preferences.js';
 import { Link } from 'react-router';
 import { Avatar, Button, EmptyState } from '../../components/ui.js';
 import { deleteExpense, expensePermissions } from './api.js';
-import { MapLink } from './LocationField.js';
+import { LocationSummary } from './LocationField.js';
 import { ReceiptLink } from '../receipt/ReceiptViewer.js';
 import { ReceiptRetryButton } from '../receipt/ReceiptSection.js';
 import { summarize } from '../receipt/status.js';
@@ -209,7 +209,7 @@ export function ExpenseList({
 
                       {(expense.location || files.length > 0) && (
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                          {expense.location && <MapLink location={expense.location} />}
+                          {expense.location && <LocationSummary location={expense.location} />}
                           <ReceiptLink paths={files} />
                         </div>
                       )}

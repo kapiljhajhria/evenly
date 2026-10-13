@@ -68,13 +68,16 @@ export interface SplitEntry extends SplitInput {
  * Where an expense happened. Optional and additive — expenses recorded before
  * this existed simply have no `location`.
  *
- * `name` is reserved for a reverse-geocoded label. It is always null today; the
- * field exists so adding place names later needs no migration.
+ * `name` is an optional place label the person typed, or one read from a pasted
+ * maps link. Rules check only the keys, so read it through `locationName()`.
  */
 export interface ExpenseLocation {
   lat: number;
   lng: number;
-  /** Metres, straight from the Geolocation API. Null if the device withheld it. */
+  /**
+   * Metres, straight from the Geolocation API. Null if the device withheld it,
+   * and always null for a location entered by hand.
+   */
   accuracy: number | null;
   name: string | null;
 }
