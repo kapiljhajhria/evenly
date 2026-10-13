@@ -11,6 +11,7 @@ import { useDisplayDateFormat } from '../../stores/preferences.js';
 import { AppShell } from '../../components/Layout.js';
 import { Avatar, Card, EmptyState, ErrorNote, FullPageSpinner } from '../../components/ui.js';
 import { dayLabel } from '../expense/days.js';
+import { PlacesSection } from './PlacesSection.js';
 
 /**
  * Where the group's money went: by person, by category, by day — for the
@@ -103,6 +104,8 @@ export function InsightsPage() {
               onSelect={(id) => setMemberId((current) => (current === id ? null : id))}
             />
           </div>
+
+          <PlacesSection expenses={expenses} memberId={memberId} category={category} dateFormat={dateFormat} />
 
           <DayBreakdown
             days={insights.days}

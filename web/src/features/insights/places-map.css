@@ -1,0 +1,48 @@
+/* Leaflet writes colours as SVG attributes; CSS rules win over those, which
+   lets the map use the app's theme variables. */
+.places-map {
+  font-family: var(--font-sans);
+  /* Leaflet's panes use z-index up to 1000; keep them under the app's headers and sheets. */
+  isolation: isolate;
+  z-index: 0;
+}
+
+.places-map .place-marker {
+  fill: var(--color-accent-400);
+  fill-opacity: 0.55;
+  stroke: var(--color-accent-600);
+  stroke-width: 1.5;
+  transition: fill-opacity 150ms, stroke-width 150ms;
+}
+
+.places-map .place-marker:hover,
+.places-map .place-marker.is-selected {
+  fill-opacity: 0.85;
+  stroke: var(--color-brand-600);
+  stroke-width: 2.5;
+}
+
+.places-map.has-day .place-marker:not(.is-selected) {
+  fill-opacity: 0.15;
+  stroke-opacity: 0.35;
+}
+
+.places-map .day-marker {
+  fill: var(--color-brand-600);
+  fill-opacity: 1;
+  stroke: white;
+  stroke-width: 2;
+}
+
+.places-map .leaflet-tooltip {
+  border: 0;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* OSM's standard style is busy; mute it so the spend circles lead. */
+.places-map .leaflet-tile-pane {
+  filter: grayscale(0.85) contrast(0.9) brightness(1.04);
+}

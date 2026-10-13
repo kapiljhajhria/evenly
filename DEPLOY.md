@@ -70,6 +70,15 @@ VITE_FIREBASE_VAPID_KEY=BExample...
 ENV
 ```
 
+Optional: the map tiles on the Insights page. Without these the map uses
+OpenStreetMap's own tile server, which allows light use with attribution and
+no key. For a keyed provider set both (the attribution is a licence condition):
+
+```bash
+VITE_MAP_TILE_URL=https://api.maptiler.com/maps/dataviz/{z}/{x}/{y}.png?key=YOUR_KEY
+VITE_MAP_TILE_ATTRIBUTION=&copy; MapTiler &copy; OpenStreetMap contributors
+```
+
 Copy the values from the console — do not hand-type the bucket name. Projects
 created recently use `.firebasestorage.app`; older ones use `.appspot.com`.
 
