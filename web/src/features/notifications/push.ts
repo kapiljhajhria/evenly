@@ -62,10 +62,15 @@ async function hash(token: string): Promise<string> {
 /** Get (or refresh) this device's token and store it. Permission must already be granted. */
 async function register(uid: string): Promise<void> {
   const { getMessaging, getToken } = await import('firebase/messaging');
-  const token = await getToken(getMessaging(app), {
-    vapidKey: VAPID_KEY,
-    serviceWorkerRegistration: await serviceWorker(),
-  });
+  let token: string;
+  try {
+    token = await getToken(getMessaging(app), {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: await serviceWorker(),
+    });
+  } catch (error) {
+    throw new Error(await explainPushFailure(error));
+  }
   if (!token) throw new Error('Could not get a notification token for this device.');
   const id = await hash(token);
   const previous = readLocal(DEVICE_KEY);
@@ -73,6 +78,31 @@ async function register(uid: string): Promise<void> {
   // A rotated token gets a new id; drop the stale entry.
   if (previous && previous !== id) await deleteDoc(deviceDoc(uid, previous)).catch(() => undefined);
   writeLocal(DEVICE_KEY, id);
+}
+
+/**
+ * Web push on Chromium browsers goes through Google's push service. Brave
+ * turns that off by default for privacy, and the browser then reports the
+ * opaque "Registration failed - push service error". Say what to do instead.
+ */
+async function explainPushFailure(error: unknown): Promise<string> {
+  const message = error instanceof Error ? error.message : String(error);
+  const pushServiceDown = /push service error|AbortError|Registration failed/i.test(message);
+  if (!pushServiceDown) return message || 'Could not register this device for notifications.';
+
+  const brave = (navigator as Navigator & { brave?: { isBrave?: () => Promise<boolean> } }).brave;
+  const isBrave = brave?.isBrave ? await brave.isBrave().catch(() => false) : false;
+  if (isBrave) {
+    return (
+      'Brave blocks the push service Evenly uses, so notifications cannot be set up here. ' +
+      'To allow it: open brave://settings/privacy, turn on "Use Google services for push messaging", ' +
+      'restart Brave and try again. Or use Chrome, Edge or Safari for notifications.'
+    );
+  }
+  return (
+    'The browser could not reach its push service, so notifications cannot be set up right now. ' +
+    'A VPN, firewall or privacy extension can block it; try again on another network, or in Chrome, Edge or Safari.'
+  );
 }
 
 /**
