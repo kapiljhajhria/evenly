@@ -184,7 +184,7 @@ export function GroupPage() {
             </div>
           )}
 
-          {group.lastExpenseAt && <BreakdownCard groupId={groupId} members={members} myMemberId={myMemberId} />}
+          {group.lastExpenseAt && <BreakdownCard groupId={groupId} balances={group.balances ?? {}} members={members} myMemberId={myMemberId} />}
         </div>
 
         <div className="min-w-0 space-y-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">

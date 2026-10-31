@@ -238,6 +238,50 @@ describe('buildExport', () => {
     expect(model.transferRows).toEqual([['Bilal', 'Asha', 'Rs 150.00']]);
   });
 
+  it('spells out the middle step when the plan skips one', () => {
+    // Kapil paid 900 for all three, Prabhakar 300 for all three: Mihir owes
+    // Prabhakar 100 directly, but the plan sends all of Mihir's money to Kapil.
+    const three = [
+      { id: 'k', name: 'Kapil' },
+      { id: 'm', name: 'Mihir' },
+      { id: 'p', name: 'Prabhakar' },
+    ];
+    const each = (amount: number) => ['k', 'm', 'p'].map((memberId) => ({ memberId, input: 1, owedPaise: amount }));
+    const model = buildExport(
+      input({
+        members: three,
+        balances: { k: 50000, m: -40000, p: -10000 },
+        expenses: [
+          expense({ id: 'e1', amountPaise: 90000, paidBy: 'k', splits: each(30000) }),
+          expense({ id: 'e2', amountPaise: 30000, paidBy: 'p', splits: each(10000) }),
+        ],
+      }),
+    );
+    expect(model.directRows).toEqual([
+      ['Mihir', 'Kapil', 'Rs 300.00'],
+      ['Prabhakar', 'Kapil', 'Rs 200.00'],
+      ['Mihir', 'Prabhakar', 'Rs 100.00'],
+    ]);
+    expect(model.shortcutLines).toEqual([
+      'Mihir owes Prabhakar Rs 100.00, and Prabhakar owes Kapil. So Mihir pays that Rs 100.00 straight to Kapil, and Prabhakar pays Kapil Rs 100.00 less.',
+    ]);
+    expect(model.transferRows).toEqual([
+      ['Mihir', 'Kapil', 'Rs 400.00'],
+      ['Prabhakar', 'Kapil', 'Rs 100.00'],
+    ]);
+    expect(model.transferNotes).toEqual([
+      'Rs 300.00 own debt to Kapil\n+ Rs 100.00 owed to Prabhakar, paid to Kapil instead',
+      'Rs 200.00 own debt to Kapil\n- Rs 100.00 Mihir pays this part for them',
+    ]);
+  });
+
+  it('adds no steps when nothing is re-routed', () => {
+    const model = buildExport(input());
+    expect(model.directRows).toEqual([]);
+    expect(model.shortcutLines).toEqual([]);
+    expect(model.transferNotes).toEqual(['']);
+  });
+
   it('has nothing to transfer once settled', () => {
     const model = buildExport(input({ balances: {}, closed: true }));
     expect(model.transferRows).toEqual([]);

@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import {
   formatPaise,
   localDateString,
@@ -145,6 +145,16 @@ export function SettleUpPage() {
           ) : (
             <div className="space-y-2">
               <p className="px-1 text-sm font-medium text-slate-700">Suggested — clears every balance</p>
+              {Object.values(balances).filter((paise) => paise !== 0).length > 2 && (
+                <p className="px-1 text-xs text-pretty text-slate-500">
+                  To keep payments few, a debt can skip a middle person: if you owe someone who owes a third
+                  person, you may pay the third person directly. The group page shows each step under{' '}
+                  <Link to={`/group/${groupId}`} className="text-brand-600 underline underline-offset-2">
+                    Breakdown → Who owes whom
+                  </Link>
+                  .
+                </p>
+              )}
               <ul className="space-y-2">
                 {transfers.map((transfer) => {
                   const key = `${transfer.from}-${transfer.to}`;

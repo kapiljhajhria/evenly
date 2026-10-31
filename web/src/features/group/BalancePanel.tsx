@@ -62,6 +62,11 @@ export function BalancePanel({
               <Money paise={transfer.amountPaise} className="font-medium" />
             </li>
           ))}
+          {Object.values(balances).filter((paise) => paise !== 0).length > 2 && (
+            <li className="pt-1 text-xs text-pretty text-slate-400">
+              Fewest payments: a debt may skip a middle person. Breakdown → Who owes whom shows each step.
+            </li>
+          )}
         </ul>
       )}
 

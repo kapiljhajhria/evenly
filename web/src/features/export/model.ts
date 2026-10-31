@@ -4,12 +4,14 @@ import {
   categoryInfo,
   computeInsights,
   DEFAULT_DISPLAY_DATE_FORMAT,
+  explainSettlement,
   formatDate,
   formatDateTimeOf,
   formatPaise,
   formatTime,
   isPersonal,
   netFor,
+  pairwiseDebts,
   receiptFilePaths,
   sharePercent,
   suggestSettlements,
@@ -17,6 +19,7 @@ import {
 } from '@app/shared';
 
 import type { LedgerTag } from './tags.js';
+import { partLabel, shortcutSentence } from '../group/settleWords.js';
 
 /**
  * Everything the PDF says, worked out without jsPDF or the DOM so it can be
@@ -89,6 +92,19 @@ export interface ExportModel {
   balanceRows: [string, string][];
   /** [from, to, amount]. Empty once everyone is settled. */
   transferRows: [string, string, string][];
+  /**
+   * Per transferRows row: how that payment adds up, one line per part
+   * ("Rs 4,223.75 own debt to Kapil"). Empty strings when nothing was re-routed.
+   */
+  transferNotes: string[];
+  /**
+   * [from, to, amount]: what each member owes each other directly, from the
+   * expenses. Only filled when the transfers re-route some of it — otherwise
+   * the transfers already say the same thing.
+   */
+  directRows: [string, string, string][];
+  /** One sentence per shortcut that turns the direct debts into the transfers. */
+  shortcutLines: string[];
   /**
    * [date, description, paid by, amount, split]. Oldest first. For a payment
    * made in several transfers, the split column lists the transfers.
@@ -266,11 +282,36 @@ export function buildExport(input: ExportInput): ExportModel {
     return [member.name, position];
   });
 
-  const transferRows: ExportModel['transferRows'] = suggestSettlements(input.balances).map((t) => [
+  const plan = suggestSettlements(input.balances);
+  const transferRows: ExportModel['transferRows'] = plan.map((t) => [
     nameOf(t.from),
     nameOf(t.to),
     money(t.amountPaise),
   ]);
+
+  // Spell out any middle step the plan skips, so a payment to someone the
+  // payer never owed directly is explained on the page.
+  const debts = pairwiseDebts(expenses);
+  const explained = explainSettlement(debts, plan);
+  const namer = { name: nameOf, me: null };
+  const rerouted = explained !== null && explained.shortcuts.length > 0;
+  const directRows: ExportModel['directRows'] = rerouted
+    ? debts.map((d) => [nameOf(d.from), nameOf(d.to), money(d.amountPaise)])
+    : [];
+  const shortcutLines = rerouted ? explained.shortcuts.map((sc) => shortcutSentence(namer, sc, money)) : [];
+  const transferNotes = plan.map((_, i) => {
+    const t = explained?.transfers[i];
+    if (!rerouted || !t || t.parts.length === 0) return '';
+    return t.parts
+      .map((part, j) => {
+        const sign = j > 0 ? (part.amountPaise < 0 ? '- ' : '+ ') : '';
+        const label = partLabel(namer, t.from, t.to, part);
+        // "Own debt…", "Owed to…", "Paid to…" read on after the amount; names keep their capital.
+        const text = /^(Own|Owed|Paid) /.test(label) ? label.charAt(0).toLowerCase() + label.slice(1) : label;
+        return `${sign}${money(Math.abs(part.amountPaise))} ${text}`;
+      })
+      .join('\n');
+  });
 
   return {
     title: input.groupName,
@@ -278,6 +319,9 @@ export function buildExport(input: ExportInput): ExportModel {
     totals: { spentPaise, expenseCount: expenses.length - settlementCount, settlementCount, personalPaise },
     balanceRows,
     transferRows,
+    transferNotes,
+    directRows,
+    shortcutLines,
     ledgerRows,
     ledgerTags,
     receipts,

@@ -494,14 +494,66 @@ function writeSummary(
     },
   });
 
-  if (model.transferRows.length > 0) {
+  // When the plan skips a middle person, show the direct debts and each
+  // shortcut first, so no payment looks like it came from nowhere.
+  const rerouted = model.shortcutLines.length > 0;
+  if (rerouted) {
     const align = rightAligned([2]);
     autoTable(doc, {
       ...TABLE,
       startY: lastY() + 10,
-      head: [['To settle: from', 'to', 'amount']],
-      body: model.transferRows,
+      head: [['1. Owes directly: from', 'to', 'amount']],
+      body: model.directRows,
       columnStyles: align.columnStyles,
+      didParseCell: align.headAlign,
+    });
+
+    let lineY = sectionTop(doc, lastY() + 16, 60);
+    doc.setFont(font, 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    doc.text('2. Shortcut to fewer payments', MARGIN, lineY + 8);
+    doc.setFont(font, 'normal');
+    doc.setFontSize(8.5);
+    lineY += 20;
+    for (const line of model.shortcutLines) {
+      const wrapped = doc.splitTextToSize(line, pageWidth - MARGIN * 2 - 10) as string[];
+      lineY = sectionTop(doc, lineY, wrapped.length * 11 + 4);
+      doc.setFillColor(...MARIGOLD);
+      doc.rect(MARGIN, lineY - 7, 2.5, wrapped.length * 11 - 2, 'F');
+      doc.setTextColor(...INK);
+      doc.text(wrapped, MARGIN + 10, lineY);
+      lineY += wrapped.length * 11 + 4;
+    }
+    doc.setTextColor(...MUTED);
+    const note = doc.splitTextToSize(
+      'Everyone ends up exactly even either way. Paying the direct debts in step 1 instead works too; it just takes more payments.',
+      pageWidth - MARGIN * 2,
+    ) as string[];
+    lineY = sectionTop(doc, lineY + 2, note.length * 10 + 4);
+    doc.text(note, MARGIN, lineY);
+    lineY += note.length * 10 + 2;
+    // autoTable's next startY comes from lastY(); place the table under the text.
+    y = lineY;
+  }
+
+  if (model.transferRows.length > 0) {
+    const withNotes = rerouted && model.transferNotes.some((note) => note !== '');
+    const align = rightAligned([2]);
+    autoTable(doc, {
+      ...TABLE,
+      startY: rerouted ? y + 2 : lastY() + 10,
+      head: [
+        withNotes
+          ? [rerouted ? '3. To settle: from' : 'To settle: from', 'to', 'amount', 'how it adds up']
+          : [rerouted ? '3. To settle: from' : 'To settle: from', 'to', 'amount'],
+      ],
+      body: withNotes
+        ? model.transferRows.map((row, i) => [...row, model.transferNotes[i] ?? ''])
+        : model.transferRows,
+      columnStyles: withNotes
+        ? { ...align.columnStyles, 3: { fontSize: 8, textColor: MUTED, cellWidth: 210 } }
+        : align.columnStyles,
       didParseCell: align.headAlign,
     });
   }

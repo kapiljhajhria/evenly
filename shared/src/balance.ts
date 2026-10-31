@@ -134,3 +134,120 @@ export function pairwiseDebts(
   }
   return debts.sort((x, y) => y.amountPaise - x.amountPaise || (x.from + x.to < y.from + y.to ? -1 : 1));
 }
+
+/**
+ * One shortcut: `from` owed `via`, and `via` owed `to`, so `from` pays `to`
+ * directly instead and `via` pays `to` that much less.
+ */
+export interface Shortcut {
+  from: MemberId;
+  via: MemberId;
+  to: MemberId;
+  amountPaise: Paise;
+}
+
+/**
+ * Why a final payment is the amount it is, relative to its payer:
+ *   own        — what they owe the receiver directly
+ *   passedOn   — what they owed `other`, paid to the receiver instead (adds)
+ *   coveredBy  — `other` pays this part to the receiver for them (subtracts)
+ *   redirected — part of their debt to the receiver that they pay to `other` instead (subtracts)
+ */
+export interface TransferPart {
+  kind: 'own' | 'passedOn' | 'coveredBy' | 'redirected';
+  other: MemberId | null;
+  amountPaise: Paise;
+}
+
+export interface ExplainedTransfer extends PairDebt {
+  /** Signed contributions that sum to `amountPaise`; empty when there is nothing to explain. */
+  parts: TransferPart[];
+}
+
+export interface SettlementExplanation {
+  shortcuts: Shortcut[];
+  transfers: ExplainedTransfer[];
+}
+
+const pairKey = (from: MemberId, to: MemberId): string => `${from}|${to}`;
+
+/** Removes middle steps one at a time, largest first, until nobody both owes and is owed. */
+export function shortcutDebts(debts: readonly PairDebt[]): { shortcuts: Shortcut[]; result: PairDebt[] } {
+  const edges = new Map<string, PairDebt>();
+  for (const d of debts) if (d.amountPaise > 0) edges.set(pairKey(d.from, d.to), { ...d });
+
+  const addEdge = (from: MemberId, to: MemberId, paise: Paise): void => {
+    const reverse = edges.get(pairKey(to, from));
+    if (reverse) {
+      const cancel = Math.min(reverse.amountPaise, paise);
+      reverse.amountPaise -= cancel;
+      paise -= cancel;
+      if (reverse.amountPaise === 0) edges.delete(pairKey(to, from));
+    }
+    if (paise === 0) return;
+    const edge = edges.get(pairKey(from, to));
+    if (edge) edge.amountPaise += paise;
+    else edges.set(pairKey(from, to), { from, to, amountPaise: paise });
+  };
+  const subEdge = (from: MemberId, to: MemberId, paise: Paise): void => {
+    const edge = edges.get(pairKey(from, to))!;
+    edge.amountPaise -= paise;
+    if (edge.amountPaise === 0) edges.delete(pairKey(from, to));
+  };
+
+  const shortcuts: Shortcut[] = [];
+  // Every step lowers the total owed by at least one paisa, so this ends.
+  while (true) {
+    let best: Shortcut | null = null;
+    const sorted = [...edges.values()].sort((x, y) => pairKey(x.from, x.to).localeCompare(pairKey(y.from, y.to)));
+    for (const first of sorted) {
+      for (const second of sorted) {
+        if (second.from !== first.to || second.to === first.from) continue;
+        const amountPaise = Math.min(first.amountPaise, second.amountPaise);
+        if (!best || amountPaise > best.amountPaise) best = { from: first.from, via: first.to, to: second.to, amountPaise };
+      }
+    }
+    if (!best) break;
+    shortcuts.push(best);
+    subEdge(best.from, best.via, best.amountPaise);
+    subEdge(best.via, best.to, best.amountPaise);
+    addEdge(best.from, best.to, best.amountPaise);
+  }
+  return { shortcuts, result: [...edges.values()] };
+}
+
+/**
+ * Connects the direct debts to the fewest-payments plan step by step, so the
+ * plan never looks like money appearing from nowhere. Null when the shortcuts
+ * lead to a different (equally valid) plan, possible in larger groups, so
+ * nothing is shown that does not match what Settle up suggests.
+ */
+export function explainSettlement(
+  debts: readonly PairDebt[],
+  plan: readonly PairDebt[],
+): SettlementExplanation | null {
+  const { shortcuts, result } = shortcutDebts(debts);
+  const same =
+    result.length === plan.length &&
+    plan.every((p) => result.some((r) => r.from === p.from && r.to === p.to && r.amountPaise === p.amountPaise));
+  if (!same) return null;
+
+  const direct = (from: MemberId, to: MemberId): Paise =>
+    debts.find((d) => d.from === from && d.to === to)?.amountPaise ?? 0;
+
+  const transfers = plan.map((t): ExplainedTransfer => {
+    const parts: TransferPart[] = [];
+    const own = direct(t.from, t.to) - direct(t.to, t.from);
+    if (own !== 0) parts.push({ kind: 'own', other: null, amountPaise: own });
+    for (const s of shortcuts) {
+      if (s.from === t.from && s.to === t.to) parts.push({ kind: 'passedOn', other: s.via, amountPaise: s.amountPaise });
+      if (s.via === t.from && s.to === t.to) parts.push({ kind: 'coveredBy', other: s.from, amountPaise: -s.amountPaise });
+      if (s.from === t.from && s.via === t.to) parts.push({ kind: 'redirected', other: s.to, amountPaise: -s.amountPaise });
+    }
+    const adds = parts.reduce((sum, p) => sum + p.amountPaise, 0) === t.amountPaise;
+    // A lone "own" part says nothing the amount does not.
+    const trivial = parts.length === 1 && parts[0]!.kind === 'own';
+    return { ...t, parts: adds && !trivial ? parts : [] };
+  });
+  return { shortcuts, transfers };
+}

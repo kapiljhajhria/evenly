@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { BalanceMap } from './balance.js';
-import { applyDelta, expenseDelta, isSettledUp, pairwiseDebts, suggestSettlements, writeDelta } from './balance.js';
+import type { PairDebt } from './balance.js';
+import {
+  applyDelta,
+  explainSettlement,
+  expenseDelta,
+  isSettledUp,
+  pairwiseDebts,
+  shortcutDebts,
+  suggestSettlements,
+  writeDelta,
+} from './balance.js';
 import { computeSplits, settlementSplits } from './split.js';
 
 const dinner = {
@@ -168,5 +178,70 @@ describe('pairwiseDebts', () => {
       { amountPaise: 50000, paidBy: 'c', splits: split3(50000), deletedAt: { seconds: 1 } },
     ];
     expect(pairwiseDebts(expenses)).toEqual([{ from: 'c', to: 'a', amountPaise: 10000 }]);
+  });
+});
+
+describe('explainSettlement', () => {
+  // The Goa trip: m owes p 2384.34 and k 4223.75; p owes k 6307.50.
+  const debts = [
+    { from: 'p', to: 'k', amountPaise: 630750 },
+    { from: 'm', to: 'k', amountPaise: 422375 },
+    { from: 'm', to: 'p', amountPaise: 238434 },
+  ];
+
+  it('shows the middle step behind the fewest-payments plan', () => {
+    const plan = suggestSettlements({ k: 1053125, m: -660809, p: -392316 });
+    const explained = explainSettlement(debts, plan)!;
+    expect(explained.shortcuts).toEqual([{ from: 'm', via: 'p', to: 'k', amountPaise: 238434 }]);
+    expect(explained.transfers).toEqual([
+      {
+        from: 'm',
+        to: 'k',
+        amountPaise: 660809,
+        parts: [
+          { kind: 'own', other: null, amountPaise: 422375 },
+          { kind: 'passedOn', other: 'p', amountPaise: 238434 },
+        ],
+      },
+      {
+        from: 'p',
+        to: 'k',
+        amountPaise: 392316,
+        parts: [
+          { kind: 'own', other: null, amountPaise: 630750 },
+          { kind: 'coveredBy', other: 'm', amountPaise: -238434 },
+        ],
+      },
+    ]);
+  });
+
+  it('needs no shortcut when debts are already direct', () => {
+    const simple = [{ from: 'b', to: 'a', amountPaise: 500 }];
+    expect(explainSettlement(simple, suggestSettlements({ a: 500, b: -500 }))).toEqual({
+      shortcuts: [],
+      transfers: [{ from: 'b', to: 'a', amountPaise: 500, parts: [] }],
+    });
+  });
+
+  it('ends with every member only paying or only receiving, at their balance', () => {
+    const many: PairDebt[] = [
+      { from: 'a', to: 'b', amountPaise: 700 },
+      { from: 'b', to: 'c', amountPaise: 400 },
+      { from: 'c', to: 'd', amountPaise: 900 },
+      { from: 'd', to: 'a', amountPaise: 100 },
+      { from: 'b', to: 'd', amountPaise: 250 },
+    ];
+    const { result } = shortcutDebts(many);
+    const payers = new Set(result.map((r) => r.from));
+    expect(result.every((r) => !payers.has(r.to))).toBe(true);
+    const net = (list: PairDebt[]) => {
+      const out: BalanceMap = {};
+      for (const d of list) {
+        out[d.to] = (out[d.to] ?? 0) + d.amountPaise;
+        out[d.from] = (out[d.from] ?? 0) - d.amountPaise;
+      }
+      return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== 0));
+    };
+    expect(net(result)).toEqual(net(many));
   });
 });
