@@ -86,3 +86,51 @@ export function suggestSettlements(balances: BalanceMap): { from: MemberId; to: 
   }
   return transfers;
 }
+
+export interface PairDebt {
+  from: MemberId;
+  to: MemberId;
+  amountPaise: Paise;
+}
+
+/**
+ * Who owes whom DIRECTLY, from the expenses themselves: each participant owes
+ * the payer their share, and every pair is netted against itself. Unlike
+ * `suggestSettlements`, nothing is re-routed — if B paid for C, C owes B here
+ * even when the fewest-payments plan would send C's money elsewhere.
+ *
+ * A settlement is an expense paid by the sender and owed by the recipient, so
+ * it cancels the sender's debt to that recipient. Deleted expenses count for
+ * nothing. Each member's rows net to their `balances` entry.
+ */
+export function pairwiseDebts(
+  expenses: readonly (BalanceRelevant & { deletedAt?: unknown })[],
+): PairDebt[] {
+  // owed[a][b] = gross paise a owes b.
+  const owed = new Map<MemberId, Map<MemberId, Paise>>();
+  const add = (from: MemberId, to: MemberId, paise: Paise): void => {
+    const row = owed.get(from) ?? new Map<MemberId, Paise>();
+    row.set(to, (row.get(to) ?? 0) + paise);
+    owed.set(from, row);
+  };
+  for (const expense of expenses) {
+    if (expense.deletedAt) continue;
+    for (const split of expense.splits) {
+      if (split.memberId !== expense.paidBy && split.owedPaise !== 0) add(split.memberId, expense.paidBy, split.owedPaise);
+    }
+  }
+
+  const debts: PairDebt[] = [];
+  const seen = new Set<string>();
+  for (const [a, row] of owed) {
+    for (const b of row.keys()) {
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const net = (owed.get(a)?.get(b) ?? 0) - (owed.get(b)?.get(a) ?? 0);
+      if (net > 0) debts.push({ from: a, to: b, amountPaise: net });
+      else if (net < 0) debts.push({ from: b, to: a, amountPaise: -net });
+    }
+  }
+  return debts.sort((x, y) => y.amountPaise - x.amountPaise || (x.from + x.to < y.from + y.to ? -1 : 1));
+}

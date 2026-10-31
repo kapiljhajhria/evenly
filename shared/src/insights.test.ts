@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeInsights, sharePercent, type InsightExpense } from './insights.js';
+import { computeInsights, memberTotals, sharePercent, type InsightExpense } from './insights.js';
 import { UNCATEGORIZED } from './category.js';
 
 const expense = (overrides: Partial<InsightExpense>): InsightExpense => ({
@@ -143,5 +143,36 @@ describe('sharePercent', () => {
     expect(sharePercent(1, 1000)).toBe('<1%');
     expect(sharePercent(0, 1000)).toBe('0%');
     expect(sharePercent(5, 0)).toBe('0%');
+  });
+});
+
+describe('memberTotals', () => {
+  const shared = {
+    type: 'expense',
+    amountPaise: 30000,
+    paidBy: 'a',
+    date: '2026-10-01',
+    splits: [
+      { memberId: 'a', owedPaise: 10000 },
+      { memberId: 'b', owedPaise: 10000 },
+      { memberId: 'c', owedPaise: 10000 },
+    ],
+  };
+  const personal = { type: 'expense', amountPaise: 5000, paidBy: 'b', date: '2026-10-01', splits: [{ memberId: 'b', owedPaise: 5000 }] };
+  const settlement = { type: 'settlement', amountPaise: 10000, paidBy: 'b', date: '2026-10-02', splits: [{ memberId: 'a', owedPaise: 10000 }] };
+  const deleted = { ...shared, paidBy: 'c', deletedAt: { seconds: 1 } };
+
+  it('counts personal spending by default, never settlements or deleted', () => {
+    const result = memberTotals([shared, personal, settlement, deleted], ['a', 'b', 'c']);
+    expect(result.totalPaise).toBe(35000);
+    expect(result.personalPaise).toBe(5000);
+    expect(result.members.find((m) => m.memberId === 'b')).toEqual({ memberId: 'b', paidPaise: 5000, sharePaise: 15000, personalPaise: 5000 });
+    expect(result.members.find((m) => m.memberId === 'c')!.paidPaise).toBe(0);
+  });
+
+  it('drops personal expenses when asked', () => {
+    const result = memberTotals([shared, personal], ['a', 'b', 'c'], { excludePersonal: true });
+    expect(result.totalPaise).toBe(30000);
+    expect(result.members.find((m) => m.memberId === 'b')).toEqual({ memberId: 'b', paidPaise: 0, sharePaise: 10000, personalPaise: 5000 });
   });
 });

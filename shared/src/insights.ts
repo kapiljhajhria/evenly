@@ -199,3 +199,55 @@ export function computeInsights(
     days: dayList,
   };
 }
+
+export interface MemberTotals {
+  memberId: string;
+  /** Paid out of their own pocket, for expenses in scope. */
+  paidPaise: number;
+  /** Their share of what was bought, in scope. */
+  sharePaise: number;
+  /** Their personal expenses (paid for themselves only), always counted. */
+  personalPaise: number;
+}
+
+/**
+ * How much each member paid and consumed. Settlements and deleted entries
+ * never count. With `excludePersonal`, expenses someone paid for only
+ * themselves drop out, leaving real shared spending; `personalPaise` still
+ * reports them so the page can say what was left out.
+ */
+export function memberTotals(
+  expenses: readonly InsightExpense[],
+  memberIds: readonly string[],
+  { excludePersonal = false }: { excludePersonal?: boolean } = {},
+): { members: MemberTotals[]; totalPaise: number; personalPaise: number } {
+  const byId = new Map<string, MemberTotals>(
+    memberIds.map((id) => [id, { memberId: id, paidPaise: 0, sharePaise: 0, personalPaise: 0 }]),
+  );
+  const get = (id: string): MemberTotals => {
+    let entry = byId.get(id);
+    if (!entry) {
+      entry = { memberId: id, paidPaise: 0, sharePaise: 0, personalPaise: 0 };
+      byId.set(id, entry);
+    }
+    return entry;
+  };
+  let totalPaise = 0;
+  let personalPaise = 0;
+  for (const expense of expenses) {
+    if (expense.type !== 'expense' || isDeleted(expense)) continue;
+    if (isPersonal(expense)) {
+      get(expense.paidBy).personalPaise += expense.amountPaise;
+      personalPaise += expense.amountPaise;
+      if (excludePersonal) continue;
+    }
+    totalPaise += expense.amountPaise;
+    get(expense.paidBy).paidPaise += expense.amountPaise;
+    for (const split of expense.splits) get(split.memberId).sharePaise += split.owedPaise;
+  }
+  return {
+    members: [...byId.values()].sort((a, b) => b.paidPaise - a.paidPaise || b.sharePaise - a.sharePaise),
+    totalPaise,
+    personalPaise,
+  };
+}

@@ -65,59 +65,6 @@ export function BalancePanel({
         </ul>
       )}
 
-      {transfers.length > 0 && (
-        <details className="border-t border-slate-100 pt-3">
-          <summary className="cursor-pointer text-sm text-slate-500 transition hover:text-slate-900">
-            Who owes whom
-          </summary>
-          <p className="mt-2 text-xs text-slate-400">
-            Based on the fewest payments that settle the group, the same plan Settle up suggests.
-          </p>
-          <ul className="mt-2 space-y-1">
-            {members.map((member) => {
-              const pays = transfers.filter((t) => t.from === member.id);
-              const gets = transfers.filter((t) => t.to === member.id);
-              if (pays.length === 0 && gets.length === 0) return null;
-              const isMe = member.id === myMemberId;
-              const label = (id: string): string => (id === myMemberId ? 'you' : nameOf(id));
-              return (
-                <li key={member.id}>
-                  <details className="group/member rounded-lg px-2 py-1 open:bg-slate-50">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm [&::-webkit-details-marker]:hidden">
-                      <span className="flex min-w-0 items-center gap-1.5 text-slate-700">
-                        <span aria-hidden className="text-xs text-slate-400 transition group-open/member:rotate-90">
-                          ▸
-                        </span>
-                        <span className="truncate">{isMe ? 'You' : member.name}</span>
-                      </span>
-                      <Money paise={netFor(balances, member.id)} colored />
-                    </summary>
-                    <ul className="mt-1 space-y-1 pb-1 pl-5 text-sm">
-                      {pays.map((t) => (
-                        <li key={`p-${t.to}`} className="flex justify-between gap-3">
-                          <span className="truncate text-slate-500">
-                            {isMe ? 'You owe' : 'Owes'} {label(t.to)}
-                          </span>
-                          <Money paise={t.amountPaise} className="text-red-600" />
-                        </li>
-                      ))}
-                      {gets.map((t) => (
-                        <li key={`g-${t.from}`} className="flex justify-between gap-3">
-                          <span className="truncate text-slate-500">
-                            {t.from === myMemberId ? 'You owe them' : `${nameOf(t.from)} owes ${isMe ? 'you' : 'them'}`}
-                          </span>
-                          <Money paise={t.amountPaise} className="text-emerald-600" />
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      )}
-
       <details className="border-t border-slate-100 pt-3">
         <summary className="cursor-pointer text-sm text-slate-500 transition hover:text-slate-900">
           Everyone's balance{canRename && ' · rename yourself'}

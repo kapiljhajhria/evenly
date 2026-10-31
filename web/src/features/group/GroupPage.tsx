@@ -8,6 +8,7 @@ import { isDeleted } from '@app/shared';
 import { AppShell } from '../../components/Layout.js';
 import { Button, Card, EmptyState, ErrorNote, FullPageSpinner } from '../../components/ui.js';
 import { BalancePanel } from './BalancePanel.js';
+import { BreakdownCard } from './BreakdownCard.js';
 import { EditableGroupName } from './EditableGroupName.js';
 import { ExpenseList } from '../expense/ExpenseList.js';
 import { ExportButton } from '../export/ExportButton.js';
@@ -182,6 +183,8 @@ export function GroupPage() {
               <Link to={`/group/${groupId}/settle`}><Button variant="secondary" className="w-full">Settle up</Button></Link>
             </div>
           )}
+
+          {group.lastExpenseAt && <BreakdownCard groupId={groupId} members={members} myMemberId={myMemberId} />}
         </div>
 
         <div className="min-w-0 space-y-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">

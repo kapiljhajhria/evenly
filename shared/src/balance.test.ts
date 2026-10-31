@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BalanceMap } from './balance.js';
-import { applyDelta, expenseDelta, isSettledUp, suggestSettlements, writeDelta } from './balance.js';
+import { applyDelta, expenseDelta, isSettledUp, pairwiseDebts, suggestSettlements, writeDelta } from './balance.js';
 import { computeSplits, settlementSplits } from './split.js';
 
 const dinner = {
@@ -118,5 +118,55 @@ describe('suggestSettlements', () => {
 
   it('returns nothing when everyone is square', () => {
     expect(suggestSettlements({ a: 0, b: 0 })).toEqual([]);
+  });
+});
+
+describe('pairwiseDebts', () => {
+  const split3 = (amount: number) =>
+    computeSplits(amount, 'equal', [
+      { memberId: 'a', input: 0 },
+      { memberId: 'b', input: 0 },
+      { memberId: 'c', input: 0 },
+    ]);
+
+  it('keeps direct debts that the simplified plan re-routes', () => {
+    // b paid 300 for all, a paid 900 for all: c owes b 100 directly, though
+    // the fewest-payments plan sends all of c's money to a.
+    const expenses = [
+      { amountPaise: 30000, paidBy: 'b', splits: split3(30000) },
+      { amountPaise: 90000, paidBy: 'a', splits: split3(90000) },
+    ];
+    expect(pairwiseDebts(expenses)).toEqual([
+      { from: 'c', to: 'a', amountPaise: 30000 },
+      { from: 'b', to: 'a', amountPaise: 20000 },
+      { from: 'c', to: 'b', amountPaise: 10000 },
+    ]);
+    expect(suggestSettlements({ a: 50000, b: -10000, c: -40000 })).toEqual([
+      { from: 'c', to: 'a', amountPaise: 40000 },
+      { from: 'b', to: 'a', amountPaise: 10000 },
+    ]);
+  });
+
+  it('nets each member to their balance', () => {
+    const expenses = [
+      { amountPaise: 30000, paidBy: 'b', splits: split3(30000) },
+      { amountPaise: 90000, paidBy: 'a', splits: split3(90000) },
+    ];
+    const balances = expenses.reduce<BalanceMap>((acc, e) => applyDelta(acc, expenseDelta(e)), {});
+    const net: BalanceMap = {};
+    for (const d of pairwiseDebts(expenses)) {
+      net[d.to] = (net[d.to] ?? 0) + d.amountPaise;
+      net[d.from] = (net[d.from] ?? 0) - d.amountPaise;
+    }
+    expect(net).toEqual(balances);
+  });
+
+  it('lets a settlement cancel the debt it pays, and ignores deleted entries', () => {
+    const expenses = [
+      { amountPaise: 30000, paidBy: 'a', splits: split3(30000) },
+      { amountPaise: 10000, paidBy: 'b', splits: settlementSplits('a', 10000) },
+      { amountPaise: 50000, paidBy: 'c', splits: split3(50000), deletedAt: { seconds: 1 } },
+    ];
+    expect(pairwiseDebts(expenses)).toEqual([{ from: 'c', to: 'a', amountPaise: 10000 }]);
   });
 });
