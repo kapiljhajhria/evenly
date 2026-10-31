@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { cert, deleteApp, initializeApp, type App } from 'firebase-admin/app';
 import { FieldValue, getFirestore, Timestamp, type Firestore } from 'firebase-admin/firestore';
-import { computeSplits, settlementSplits, type BalanceMap } from '@app/shared';
+import { computeSplits, settlementSplits, type BalanceMap, pairKeyOf } from '@app/shared';
 
 const PROJECT_ID = 'demo-expense-splitter';
 const ALICE = 'uid-alice';
@@ -184,5 +184,47 @@ describe('onExpenseWrite', () => {
 
     const doc = await waitForBalances((b) => b[SLOT_A] === 10000);
     expect(doc['balances']).toEqual({ [SLOT_A]: 10000, [SLOT_B]: -10000 });
+  });
+});
+
+/** `pairs` entry for "from owes to": canonical key, signed by id order. */
+const owes = (from: string, to: string, paise: number): [string, number] => [
+  pairKeyOf(from, to),
+  from < to ? paise : -paise,
+];
+
+describe('onExpenseWrite: direct debts (pairs)', () => {
+  it('backfills pairs for a group that never had them, then keeps them by delta', async () => {
+    // seedGroup writes no `pairs`, like every group from before the field.
+    await addExpense({ amountPaise: 90000, paidBy: SLOT_A, memberIds: [SLOT_A, SLOT_B, SLOT_C] });
+    let doc = await waitForBalances((_b, d) => d['pairs'] !== undefined);
+    expect(doc['pairs']).toEqual(Object.fromEntries([owes(SLOT_B, SLOT_A, 30000), owes(SLOT_C, SLOT_A, 30000)]));
+
+    await addExpense({ amountPaise: 30000, paidBy: SLOT_B, memberIds: [SLOT_A, SLOT_B, SLOT_C] });
+    doc = await waitForBalances((b) => b[SLOT_B] === -10000);
+    expect(doc['pairs']).toEqual(
+      Object.fromEntries([owes(SLOT_B, SLOT_A, 20000), owes(SLOT_C, SLOT_A, 30000), owes(SLOT_C, SLOT_B, 10000)]),
+    );
+  });
+
+  it('drops a pair once a settlement clears it, and empties with the balances', async () => {
+    await addExpense({ amountPaise: 20000, paidBy: SLOT_A, memberIds: [SLOT_A, SLOT_B] });
+    await waitForBalances((b) => b[SLOT_B] === -10000);
+    await groupRef().collection('expenses').add({
+      type: 'settlement',
+      description: 'Settled up',
+      date: '2026-08-23',
+      amountPaise: 10000,
+      paidBy: SLOT_B,
+      createdBy: ALICE,
+      splitType: 'amount',
+      splits: [{ memberId: SLOT_A, input: 10000, owedPaise: 10000 }],
+      receiptStatus: 'none',
+      receiptPath: null,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    const doc = await waitForBalances((_b, d) => d['balancesZero'] === true);
+    expect(doc['pairs']).toEqual({});
   });
 });

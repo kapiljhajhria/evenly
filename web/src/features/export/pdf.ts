@@ -27,6 +27,7 @@ type ExportArgs = {
   groupName: string;
   closed: boolean;
   balances: BalanceMap;
+  simplifyDebts?: boolean;
   members: { id: string; name: string; uid?: string | null }[];
   /** Receipt pages at the end of the PDF. On unless switched off; the ZIP keeps its originals either way. */
   includeReceipts?: boolean;
@@ -142,6 +143,7 @@ async function buildGroupPdf(
     closed: args.closed,
     members: args.members,
     balances: args.balances,
+    simplifyDebts: args.simplifyDebts,
     expenses,
     generatedAt,
     dateFormat: usePreferences.getState().displayDateFormat,
@@ -556,6 +558,13 @@ function writeSummary(
         : align.columnStyles,
       didParseCell: align.headAlign,
     });
+    if (model.planNote) {
+      const noteY = sectionTop(doc, lastY() + 11, 20);
+      doc.setFont(font, 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...MUTED);
+      doc.text(doc.splitTextToSize(model.planNote, pageWidth - MARGIN * 2) as string[], MARGIN, noteY);
+    }
   }
 
   for (const section of [model.groupInsights, model.myInsights]) {

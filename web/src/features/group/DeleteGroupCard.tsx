@@ -103,6 +103,7 @@ export function DeletedGroupPanel({
   deletedAtMs,
   balances,
   members,
+  simplifyDebts = false,
 }: {
   groupId: string;
   groupName: string;
@@ -111,6 +112,7 @@ export function DeletedGroupPanel({
   deletedAtMs: number | null;
   balances: BalanceMap;
   members: ExportMember[];
+  simplifyDebts?: boolean;
 }) {
   const navigate = useNavigate();
   const dateFormat = useDisplayDateFormat();
@@ -181,6 +183,7 @@ export function DeletedGroupPanel({
                     groupName={groupName}
                     closed
                     balances={balances}
+                    simplifyDebts={simplifyDebts}
                     members={members}
                     label={exported ? 'Download PDF again' : 'Download PDF'}
                     variant={exported ? 'secondary' : 'primary'}

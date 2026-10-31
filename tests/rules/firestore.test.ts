@@ -161,6 +161,23 @@ describe('groups: update', () => {
     await assertFails(updateDoc(doc(as(ALICE), 'groups', GROUP_ID), patch));
   });
 
+  it('lets the creator switch fewest payments on and off', async () => {
+    await assertSucceeds(updateDoc(doc(as(ALICE), 'groups', GROUP_ID), { simplifyDebts: true }));
+    await assertSucceeds(updateDoc(doc(as(ALICE), 'groups', GROUP_ID), { simplifyDebts: false }));
+  });
+
+  it('rejects a non-boolean fewest-payments value', async () => {
+    await assertFails(updateDoc(doc(as(ALICE), 'groups', GROUP_ID), { simplifyDebts: 'yes' }));
+  });
+
+  it('blocks a non-creator member from changing fewest payments', async () => {
+    await assertFails(updateDoc(doc(as(BOB), 'groups', GROUP_ID), { simplifyDebts: true }));
+  });
+
+  it('blocks the creator from writing the pairs map', async () => {
+    await assertFails(updateDoc(doc(as(ALICE), 'groups', GROUP_ID), { pairs: { [`${SLOT_ALICE}|${SLOT_BOB}`]: 5000 } }));
+  });
+
   it('blocks group deletion outright', async () => {
     await assertFails(deleteDoc(doc(as(ALICE), 'groups', GROUP_ID)));
   });

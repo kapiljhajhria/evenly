@@ -90,6 +90,7 @@ export async function createGroup(input: CreateGroupInput): Promise<string> {
     inviteTokenExpiresAt: Timestamp.fromDate(inviteExpiry()),
     uids: [input.uid],
     balances: {},
+    pairs: {},
     balancesZero: true,
     defaultSplit: null,
     createdAt: serverTimestamp(),
@@ -152,4 +153,9 @@ export async function setDefaultSplit(groupId: string, defaultSplit: DefaultSpli
 
 export async function renameGroup(groupId: string, name: string): Promise<void> {
   await updateDoc(groupDoc(groupId), { name: name.trim() });
+}
+
+/** Creator-only (rules): suggest the fewest payments instead of each direct debt. */
+export async function setSimplifyDebts(groupId: string, simplifyDebts: boolean): Promise<void> {
+  await updateDoc(groupDoc(groupId), { simplifyDebts });
 }

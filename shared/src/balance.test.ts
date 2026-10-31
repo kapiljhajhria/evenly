@@ -3,10 +3,15 @@ import type { BalanceMap } from './balance.js';
 import type { PairDebt } from './balance.js';
 import {
   applyDelta,
+  applyPairDelta,
   explainSettlement,
   expenseDelta,
   isSettledUp,
+  pairDebts,
+  pairDelta,
+  pairsFromExpenses,
   pairwiseDebts,
+  paymentPlan,
   shortcutDebts,
   suggestSettlements,
   writeDelta,
@@ -243,5 +248,42 @@ describe('explainSettlement', () => {
       return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== 0));
     };
     expect(net(result)).toEqual(net(many));
+  });
+});
+
+describe('pairs map', () => {
+  it('pairDelta: each participant owes the payer their share, under a canonical key', () => {
+    // b and c each owe a 300.00; "a|b" is read as "a owes b", so negative.
+    expect(pairDelta(dinner)).toEqual({ 'a|b': -30000, 'a|c': -30000 });
+  });
+
+  it('applyPairDelta drops pairs that net to zero', () => {
+    expect(applyPairDelta({ 'a|b': -30000, 'a|c': -30000 }, { 'a|b': 30000 })).toEqual({ 'a|c': -30000 });
+  });
+
+  it('pairDebts reads the map back as who owes whom, largest first', () => {
+    expect(pairDebts({ 'a|b': -30000, 'b|c': 500 })).toEqual([
+      { from: 'b', to: 'a', amountPaise: 30000 },
+      { from: 'b', to: 'c', amountPaise: 500 },
+    ]);
+  });
+
+  it('a settlement cancels exactly the pair it pays', () => {
+    const pairs = pairsFromExpenses([
+      dinner,
+      { amountPaise: 30000, paidBy: 'b', splits: settlementSplits('a', 30000) },
+    ]);
+    expect(pairs).toEqual({ 'a|c': -30000 });
+  });
+
+  it('paymentPlan is the direct debts unless the group simplifies', () => {
+    const debts = [
+      { from: 'c', to: 'a', amountPaise: 30000 },
+      { from: 'b', to: 'a', amountPaise: 20000 },
+      { from: 'c', to: 'b', amountPaise: 10000 },
+    ];
+    const balances = { a: 50000, b: -10000, c: -40000 };
+    expect(paymentPlan({ balances, debts, simplify: false })).toEqual(debts);
+    expect(paymentPlan({ balances, debts, simplify: true })).toEqual(suggestSettlements(balances));
   });
 });

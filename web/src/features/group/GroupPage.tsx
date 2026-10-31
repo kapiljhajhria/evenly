@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useOnline } from '../../hooks/useOnline.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
+import { useDirectDebts } from '../../hooks/useDebts.js';
 import { useComments, useDeletedExpenses, useExpenses, useUnconfirmedExpenses } from '../../hooks/useExpenses.js';
 import { isDeleted } from '@app/shared';
 import { AppShell } from '../../components/Layout.js';
@@ -24,6 +25,7 @@ export function GroupPage() {
   const { group, loading, error } = useGroup(groupId);
   const online = useOnline();
   const { members, byId } = useMembers(groupId);
+  const { debts, loading: debtsLoading } = useDirectDebts(groupId, group);
   const { expenses, hasMore, loadMore, error: expensesError } = useExpenses(groupId);
   const comments = useComments(groupId);
   const unconfirmed = useUnconfirmedExpenses(groupId);
@@ -133,6 +135,7 @@ export function GroupPage() {
               deletedAtMs={group.deletedAt?.toMillis() ?? null}
               balances={group.balances ?? {}}
               members={exportMembers}
+              simplifyDebts={group.simplifyDebts === true}
             />
           ) : group.status === 'closed' ? (
             <ClosedCard
@@ -168,6 +171,8 @@ export function GroupPage() {
           <BalancePanel
             groupId={groupId}
             balances={group.balances ?? {}}
+            debts={debts}
+            simplify={group.simplifyDebts === true}
             members={members}
             myMemberId={myMemberId}
             canRename={isActive && myMemberId !== null}
@@ -180,11 +185,20 @@ export function GroupPage() {
                   <span aria-hidden className="text-lg leading-none">+</span> Add expense
                 </Button>
               </Link>
-              <Link to={`/group/${groupId}/settle`}><Button variant="secondary" className="w-full">Settle up</Button></Link>
+              <Link to={`/group/${groupId}/settle`}><Button variant="secondary" className="w-full">Record payment</Button></Link>
             </div>
           )}
 
-          {group.lastExpenseAt && <BreakdownCard groupId={groupId} balances={group.balances ?? {}} members={members} myMemberId={myMemberId} />}
+          {group.lastExpenseAt && <BreakdownCard
+              groupId={groupId}
+              balances={group.balances ?? {}}
+              debts={debts}
+              debtsLoading={debtsLoading}
+              simplify={group.simplifyDebts === true}
+              isCreator={isCreator}
+              members={members}
+              myMemberId={myMemberId}
+            />}
         </div>
 
         <div className="min-w-0 space-y-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">
@@ -277,6 +291,7 @@ export function GroupPage() {
               closed={!isActive}
               balances={group.balances ?? {}}
               members={exportMembers}
+              simplifyDebts={group.simplifyDebts === true}
               withZip
               receiptsOption
             />

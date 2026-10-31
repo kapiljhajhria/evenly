@@ -111,6 +111,19 @@ export interface Group<TS = TimestampLike> {
   balances: Record<MemberId, Paise>;
   balancesZero: boolean;
   /**
+   * Direct debts: `a|b` (ids sorted) -> paise a owes b, negative = b owes a.
+   * Function-maintained like `balances`. ABSENT on groups older than this
+   * field until their next expense write backfills it; the web computes from
+   * the expenses meanwhile.
+   */
+  pairs?: Record<string, Paise>;
+  /**
+   * Creator's choice: suggest the fewest payments that clear every balance
+   * (money may skip a middle person) instead of the direct debts. Off or
+   * absent = direct.
+   */
+  simplifyDebts?: boolean;
+  /**
    * Set by `onExpenseWrite`. ABSENT (not null) until the first expense lands —
    * Firestore inequality filters skip docs missing the field, which is what
    * keeps never-used groups out of the auto-close query.

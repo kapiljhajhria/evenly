@@ -87,15 +87,86 @@ export function suggestSettlements(balances: BalanceMap): { from: MemberId; to: 
   return transfers;
 }
 
+// --------------------------------------------------------------- pairs
+
+/**
+ * Direct debts, materialized: who owes whom from the expenses themselves,
+ * maintained on the group doc by `onExpenseWrite` exactly like `balances`.
+ *
+ * Key `a|b` with a < b (member ids sort as strings). The value is the paise
+ * `a` owes `b`; negative means `b` owes `a`. Zero entries are dropped.
+ */
+export type PairMap = Record<string, Paise>;
+
+export const pairKeyOf = (a: MemberId, b: MemberId): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+/** How much `from` owes `to` as a signed contribution to the canonical key. */
+function pairEntry(from: MemberId, to: MemberId, paise: Paise): [string, Paise] {
+  return [pairKeyOf(from, to), from < to ? paise : -paise];
+}
+
+/** Per-pair effect of one expense: each participant owes the payer their share. */
+export function pairDelta(expense: BalanceRelevant): PairMap {
+  const delta: PairMap = {};
+  for (const split of expense.splits) {
+    if (split.memberId === expense.paidBy || split.owedPaise === 0) continue;
+    const [key, paise] = pairEntry(split.memberId, expense.paidBy, split.owedPaise);
+    delta[key] = (delta[key] ?? 0) + paise;
+  }
+  return delta;
+}
+
+/** Net pair change from a single write; `before`/`after` null for create/delete. */
+export function pairWriteDelta(before: BalanceRelevant | null, after: BalanceRelevant | null): PairMap {
+  const delta: PairMap = {};
+  const merge = (source: PairMap, sign: 1 | -1): void => {
+    for (const [key, paise] of Object.entries(source)) delta[key] = (delta[key] ?? 0) + sign * paise;
+  };
+  if (before) merge(pairDelta(before), -1);
+  if (after) merge(pairDelta(after), 1);
+  return delta;
+}
+
+/** Apply a pair delta. Pairs that net to zero are removed, so the map stays small. */
+export function applyPairDelta(pairs: PairMap, delta: PairMap): PairMap {
+  const next: PairMap = { ...pairs };
+  for (const [key, paise] of Object.entries(delta)) {
+    const value = (next[key] ?? 0) + paise;
+    if (value === 0) delete next[key];
+    else next[key] = value;
+  }
+  return next;
+}
+
+/** The whole map from scratch — the one-time backfill for groups older than `pairs`. */
+export function pairsFromExpenses(expenses: readonly (BalanceRelevant & { deletedAt?: unknown })[]): PairMap {
+  let pairs: PairMap = {};
+  for (const expense of expenses) {
+    if (expense.deletedAt) continue;
+    pairs = applyPairDelta(pairs, pairDelta(expense));
+  }
+  return pairs;
+}
+
 export interface PairDebt {
   from: MemberId;
   to: MemberId;
   amountPaise: Paise;
 }
 
+/** The map as a list of who-owes-whom, largest first. */
+export function pairDebts(pairs: PairMap): PairDebt[] {
+  const debts: PairDebt[] = [];
+  for (const [key, paise] of Object.entries(pairs)) {
+    if (paise === 0) continue;
+    const [a, b] = key.split('|') as [MemberId, MemberId];
+    debts.push(paise > 0 ? { from: a, to: b, amountPaise: paise } : { from: b, to: a, amountPaise: -paise });
+  }
+  return debts.sort((x, y) => y.amountPaise - x.amountPaise || (x.from + x.to < y.from + y.to ? -1 : 1));
+}
+
 /**
- * Who owes whom DIRECTLY, from the expenses themselves: each participant owes
- * the payer their share, and every pair is netted against itself. Unlike
+ * Who owes whom DIRECTLY, from the expenses themselves. Unlike
  * `suggestSettlements`, nothing is re-routed — if B paid for C, C owes B here
  * even when the fewest-payments plan would send C's money elsewhere.
  *
@@ -103,37 +174,20 @@ export interface PairDebt {
  * it cancels the sender's debt to that recipient. Deleted expenses count for
  * nothing. Each member's rows net to their `balances` entry.
  */
-export function pairwiseDebts(
-  expenses: readonly (BalanceRelevant & { deletedAt?: unknown })[],
-): PairDebt[] {
-  // owed[a][b] = gross paise a owes b.
-  const owed = new Map<MemberId, Map<MemberId, Paise>>();
-  const add = (from: MemberId, to: MemberId, paise: Paise): void => {
-    const row = owed.get(from) ?? new Map<MemberId, Paise>();
-    row.set(to, (row.get(to) ?? 0) + paise);
-    owed.set(from, row);
-  };
-  for (const expense of expenses) {
-    if (expense.deletedAt) continue;
-    for (const split of expense.splits) {
-      if (split.memberId !== expense.paidBy && split.owedPaise !== 0) add(split.memberId, expense.paidBy, split.owedPaise);
-    }
-  }
-
-  const debts: PairDebt[] = [];
-  const seen = new Set<string>();
-  for (const [a, row] of owed) {
-    for (const b of row.keys()) {
-      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const net = (owed.get(a)?.get(b) ?? 0) - (owed.get(b)?.get(a) ?? 0);
-      if (net > 0) debts.push({ from: a, to: b, amountPaise: net });
-      else if (net < 0) debts.push({ from: b, to: a, amountPaise: -net });
-    }
-  }
-  return debts.sort((x, y) => y.amountPaise - x.amountPaise || (x.from + x.to < y.from + y.to ? -1 : 1));
+export function pairwiseDebts(expenses: readonly (BalanceRelevant & { deletedAt?: unknown })[]): PairDebt[] {
+  return pairDebts(pairsFromExpenses(expenses));
 }
+
+/**
+ * What Settle up asks people to pay. Direct debts unless the group has
+ * "fewest payments" on — then the re-routed plan from the balances.
+ */
+export function paymentPlan(args: { balances: BalanceMap; debts: readonly PairDebt[]; simplify: boolean }): PairDebt[] {
+  return args.simplify ? suggestSettlements(args.balances) : [...args.debts];
+}
+
+/** Above this many shortcuts the step-by-step explanation is more noise than help. */
+export const MAX_EXPLAINED_SHORTCUTS = 3;
 
 /**
  * One shortcut: `from` owed `via`, and `via` owed `to`, so `from` pays `to`

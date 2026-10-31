@@ -5,6 +5,7 @@ import {
   computeInsights,
   DEFAULT_DISPLAY_DATE_FORMAT,
   explainSettlement,
+  MAX_EXPLAINED_SHORTCUTS,
   formatDate,
   formatDateTimeOf,
   formatPaise,
@@ -12,9 +13,9 @@ import {
   isPersonal,
   netFor,
   pairwiseDebts,
+  paymentPlan,
   receiptFilePaths,
   sharePercent,
-  suggestSettlements,
   usableParts,
 } from '@app/shared';
 
@@ -54,6 +55,8 @@ export interface ExportInput {
   rupeeSign?: boolean;
   /** The exporter's slot: adds a "Your insights" section. Null when they have none. */
   myMemberId?: string | null;
+  /** The group's "fewest payments" setting. Off or absent: the direct debts are the transfers. */
+  simplifyDebts?: boolean;
 }
 
 /**
@@ -105,6 +108,8 @@ export interface ExportModel {
   directRows: [string, string, string][];
   /** One sentence per shortcut that turns the direct debts into the transfers. */
   shortcutLines: string[];
+  /** Under the transfers when fewest payments is on but the steps are too many to list. */
+  planNote: string | null;
   /**
    * [date, description, paid by, amount, split]. Oldest first. For a payment
    * made in several transfers, the split column lists the transfers.
@@ -282,7 +287,11 @@ export function buildExport(input: ExportInput): ExportModel {
     return [member.name, position];
   });
 
-  const plan = suggestSettlements(input.balances);
+  // Direct debts by default; the re-routed fewest-payments plan only when the
+  // group has that on.
+  const debts = pairwiseDebts(expenses);
+  const simplify = input.simplifyDebts === true;
+  const plan = paymentPlan({ balances: input.balances, debts, simplify });
   const transferRows: ExportModel['transferRows'] = plan.map((t) => [
     nameOf(t.from),
     nameOf(t.to),
@@ -291,10 +300,14 @@ export function buildExport(input: ExportInput): ExportModel {
 
   // Spell out any middle step the plan skips, so a payment to someone the
   // payer never owed directly is explained on the page.
-  const debts = pairwiseDebts(expenses);
-  const explained = explainSettlement(debts, plan);
+  const explained = simplify ? explainSettlement(debts, plan) : null;
   const namer = { name: nameOf, me: null };
-  const rerouted = explained !== null && explained.shortcuts.length > 0;
+  const rerouted =
+    explained !== null && explained.shortcuts.length > 0 && explained.shortcuts.length <= MAX_EXPLAINED_SHORTCUTS;
+  const planNote =
+    simplify && plan.length > 0 && !rerouted && (explained === null || explained.shortcuts.length > 0)
+      ? 'Fewest payments is on for this group: a payment may go to someone the payer did not owe directly. Everyone still ends up exactly even.'
+      : null;
   const directRows: ExportModel['directRows'] = rerouted
     ? debts.map((d) => [nameOf(d.from), nameOf(d.to), money(d.amountPaise)])
     : [];
@@ -322,6 +335,7 @@ export function buildExport(input: ExportInput): ExportModel {
     transferNotes,
     directRows,
     shortcutLines,
+    planNote,
     ledgerRows,
     ledgerTags,
     receipts,

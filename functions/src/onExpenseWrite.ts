@@ -1,10 +1,22 @@
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
-import type { BalanceMap, Expense, Group } from '@app/shared';
-import { applyDelta, isDeleted, isSettledUp, notificationsForCreate, notificationsForDelete, splitsAreValid, storedReceiptPaths, writeDelta } from '@app/shared';
+import type { BalanceMap, Expense, Group, PairMap } from '@app/shared';
+import {
+  applyDelta,
+  applyPairDelta,
+  isDeleted,
+  isSettledUp,
+  notificationsForCreate,
+  notificationsForDelete,
+  pairsFromExpenses,
+  pairWriteDelta,
+  splitsAreValid,
+  storedReceiptPaths,
+  writeDelta,
+} from '@app/shared';
 import { deliver, groupFacts } from './push.js';
-import { bucket, db, groupRef } from './common.js';
+import { bucket, db, expensesRef, groupRef } from './common.js';
 
 /** Idempotency markers live long enough to cover a retry storm, then TTL away. */
 const EVENT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -29,8 +41,10 @@ function balanceRelevant(expense: StoredExpense | undefined): StoredExpense | nu
 }
 
 /**
- * Maintains the materialized `balances` map on the group doc from the delta of
- * the changed expense — never by rescanning the collection. Also drives
+ * Maintains the materialized `balances` and `pairs` (who owes whom directly)
+ * maps on the group doc from the delta of the changed expense — never by
+ * rescanning the collection, except once to backfill `pairs` on a group older
+ * than that field. Also drives
  * `balancesZero` / `zeroSince` / `lastExpenseAt`, which auto-close reads.
  */
 export const onExpenseWrite = onDocumentWritten('groups/{groupId}/expenses/{expenseId}', async (event) => {
@@ -50,6 +64,7 @@ export const onExpenseWrite = onDocumentWritten('groups/{groupId}/expenses/{expe
   if (!before && !after) return;
 
   const delta = writeDelta(before, after);
+  const pairChange = pairWriteDelta(before, after);
   const gRef = groupRef(groupId);
   // Triggers are at-least-once. Applying a delta twice would silently corrupt
   // balances, so every event id is recorded in the same transaction.
@@ -66,7 +81,22 @@ export const onExpenseWrite = onDocumentWritten('groups/{groupId}/expenses/{expe
     const zero = isSettledUp(balances);
     const wasZero = group.balancesZero === true;
 
-    const update: Record<string, unknown> = { balances, balancesZero: zero };
+    // A group from before `pairs` existed has none yet: build it once from
+    // every expense (this write included — the doc is already there), then
+    // deltas keep it, exactly like balances.
+    let pairs: PairMap;
+    if (group.pairs === undefined) {
+      const all = await tx.get(expensesRef(groupId));
+      pairs = pairsFromExpenses(
+        all.docs
+          .map((doc) => balanceRelevant(doc.data() as StoredExpense))
+          .filter((expense): expense is StoredExpense => expense !== null),
+      );
+    } else {
+      pairs = applyPairDelta(group.pairs, pairChange);
+    }
+
+    const update: Record<string, unknown> = { balances, balancesZero: zero, pairs };
     if (zero && !wasZero) update['zeroSince'] = FieldValue.serverTimestamp();
     if (!zero) update['zeroSince'] = null;
     // Any new or edited expense restarts the 7-day quiet period.

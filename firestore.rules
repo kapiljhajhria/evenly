@@ -123,6 +123,7 @@ service cloud.firestore {
         && request.resource.data.status == 'active'
         && request.resource.data.currency == 'INR'
         && request.resource.data.balances == {}
+        && (!('pairs' in request.resource.data) || request.resource.data.pairs == {})
         && request.resource.data.balancesZero == true
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
@@ -135,14 +136,15 @@ service cloud.firestore {
         && !('closedAt' in request.resource.data);
 
       // Creator-only, and only the whitelisted fields. Notably NOT
-      // balances / status / uids / balancesZero / zeroSince / lastExpenseAt.
+      // balances / pairs / status / uids / balancesZero / zeroSince / lastExpenseAt.
       // Values are re-validated, not just the key set: whitelisting `name`
       // without checking it would let the creator store anything under it.
       allow update: if isSignedIn()
         && resource.data.createdBy == uid()
         && resource.data.status == 'active'
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['name', 'defaultSplit', 'inviteToken', 'inviteTokenExpiresAt'])
+             .hasOnly(['name', 'defaultSplit', 'inviteToken', 'inviteTokenExpiresAt', 'simplifyDebts'])
+        && (!('simplifyDebts' in request.resource.data) || request.resource.data.simplifyDebts is bool)
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 60

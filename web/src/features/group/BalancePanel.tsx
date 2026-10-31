@@ -1,24 +1,30 @@
 import type { Timestamp } from 'firebase/firestore';
-import type { BalanceMap, Member, WithId } from '@app/shared';
-import { netFor, suggestSettlements } from '@app/shared';
+import type { BalanceMap, Member, PairDebt, WithId } from '@app/shared';
+import { netFor, paymentPlan } from '@app/shared';
 import { Card, Money } from '../../components/ui.js';
 import { InlineEdit } from '../../components/InlineEdit.js';
 import { renameMember } from './api.js';
 import { MAX_SLOT_NAME } from './constants.js';
 
 /**
- * Reads the materialized `balances` map straight off the group doc — never
- * recomputed here. One read powers the whole screen.
+ * Reads the materialized `balances` and direct debts straight off the group
+ * doc — never recomputed here. One read powers the whole screen.
  */
 export function BalancePanel({
   groupId,
   balances,
+  debts,
+  simplify,
   members,
   myMemberId,
   canRename,
 }: {
   groupId: string;
   balances: BalanceMap;
+  /** Who owes whom directly. */
+  debts: PairDebt[];
+  /** The group's "fewest payments" setting. */
+  simplify: boolean;
   members: WithId<Member<Timestamp>>[];
   myMemberId: string | null;
   /** Open group + a claimed slot: only then may you rename yourself here. */
@@ -26,8 +32,8 @@ export function BalancePanel({
 }) {
   const myNet = myMemberId ? netFor(balances, myMemberId) : 0;
   const nameOf = (memberId: string): string => members.find((m) => m.id === memberId)?.name ?? 'Someone';
-  const transfers = suggestSettlements(balances);
-  const mine = transfers.filter((t) => t.from === myMemberId || t.to === myMemberId);
+  const plan = paymentPlan({ balances, debts, simplify });
+  const mine = plan.filter((t) => t.from === myMemberId || t.to === myMemberId);
 
   return (
     <Card className="relative space-y-4 overflow-hidden">
@@ -56,15 +62,16 @@ export function BalancePanel({
             <li key={`${transfer.from}-${transfer.to}`} className="flex justify-between gap-3">
               <span className="truncate text-slate-600">
                 {transfer.from === myMemberId
-                  ? `You pay ${nameOf(transfer.to)}`
-                  : `${nameOf(transfer.from)} pays you`}
+                  ? `You owe ${nameOf(transfer.to)}`
+                  : `${nameOf(transfer.from)} owes you`}
               </span>
               <Money paise={transfer.amountPaise} className="font-medium" />
             </li>
           ))}
-          {Object.values(balances).filter((paise) => paise !== 0).length > 2 && (
+          {simplify && (
             <li className="pt-1 text-xs text-pretty text-slate-400">
-              Fewest payments: a debt may skip a middle person. Breakdown → Who owes whom shows each step.
+              Fewest payments is on for this group, so a payment may go to someone you did not deal with directly.
+              Who owes whom, below, has the direct picture.
             </li>
           )}
         </ul>

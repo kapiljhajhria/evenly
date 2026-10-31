@@ -21,6 +21,7 @@ export function ExportButton({
   groupName,
   closed,
   balances,
+  simplifyDebts = false,
   members,
   label = 'Download PDF',
   variant = 'secondary',
@@ -32,6 +33,7 @@ export function ExportButton({
   groupName: string;
   closed: boolean;
   balances: BalanceMap;
+  simplifyDebts?: boolean;
   members: { id: string; name: string; uid?: string | null }[];
   label?: string;
   variant?: 'primary' | 'secondary';
@@ -60,6 +62,7 @@ export function ExportButton({
         groupName,
         closed,
         balances,
+        simplifyDebts,
         members,
         includeReceipts: receiptsOption ? includeReceipts : true,
         onProgress: setProgress,

@@ -251,12 +251,14 @@ describe('buildExport', () => {
       input({
         members: three,
         balances: { k: 50000, m: -40000, p: -10000 },
+        simplifyDebts: true,
         expenses: [
           expense({ id: 'e1', amountPaise: 90000, paidBy: 'k', splits: each(30000) }),
           expense({ id: 'e2', amountPaise: 30000, paidBy: 'p', splits: each(10000) }),
         ],
       }),
     );
+    expect(model.planNote).toBeNull();
     expect(model.directRows).toEqual([
       ['Mihir', 'Kapil', 'Rs 300.00'],
       ['Prabhakar', 'Kapil', 'Rs 200.00'],
@@ -275,6 +277,34 @@ describe('buildExport', () => {
     ]);
   });
 
+  it('uses the direct debts as the transfers by default', () => {
+    const three = [
+      { id: 'k', name: 'Kapil' },
+      { id: 'm', name: 'Mihir' },
+      { id: 'p', name: 'Prabhakar' },
+    ];
+    const each = (amount: number) => ['k', 'm', 'p'].map((memberId) => ({ memberId, input: 1, owedPaise: amount }));
+    const model = buildExport(
+      input({
+        members: three,
+        balances: { k: 50000, m: -40000, p: -10000 },
+        expenses: [
+          expense({ id: 'e1', amountPaise: 90000, paidBy: 'k', splits: each(30000) }),
+          expense({ id: 'e2', amountPaise: 30000, paidBy: 'p', splits: each(10000) }),
+        ],
+      }),
+    );
+    expect(model.transferRows).toEqual([
+      ['Mihir', 'Kapil', 'Rs 300.00'],
+      ['Prabhakar', 'Kapil', 'Rs 200.00'],
+      ['Mihir', 'Prabhakar', 'Rs 100.00'],
+    ]);
+    expect(model.directRows).toEqual([]);
+    expect(model.shortcutLines).toEqual([]);
+    expect(model.transferNotes).toEqual(['', '', '']);
+    expect(model.planNote).toBeNull();
+  });
+
   it('adds no steps when nothing is re-routed', () => {
     const model = buildExport(input());
     expect(model.directRows).toEqual([]);
@@ -283,7 +313,17 @@ describe('buildExport', () => {
   });
 
   it('has nothing to transfer once settled', () => {
-    const model = buildExport(input({ balances: {}, closed: true }));
+    // The dinner, then Bilal paying Asha back in full: no balances, no debts.
+    const paidBack = expense({
+      id: 's1',
+      type: 'settlement',
+      description: 'Settled up',
+      date: '2026-08-23',
+      amountPaise: 15000,
+      paidBy: 'm-b',
+      splits: [{ memberId: 'm-a', input: 15000, owedPaise: 15000 }],
+    });
+    const model = buildExport(input({ balances: {}, closed: true, expenses: [expense(), paidBack] }));
     expect(model.transferRows).toEqual([]);
     expect(model.balanceRows.map((row) => row[1])).toEqual(['settled up', 'settled up']);
     expect(model.subtitle).toBe('Closed group · exported 10-oct-26, 9:05 am');
