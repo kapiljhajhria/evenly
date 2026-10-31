@@ -9,6 +9,7 @@ import { Avatar, Button, Card, EmptyState, ErrorNote, Money, Spinner } from '../
 import { NewActivityPill } from '../activity/WhatsNew.js';
 import { setAppBadge } from '../activity/badge.js';
 import { InstallCard } from '../install/InstallCard.js';
+import { NotificationsNudge } from '../notifications/NotificationsNudge.js';
 
 export function HomePage() {
   const { user, displayName, photoURL } = useAuth();
@@ -92,6 +93,7 @@ export function HomePage() {
       )}
 
       <InstallCard />
+      <NotificationsNudge />
 
       {/* Offline with nothing loaded, Firestore answers with an EMPTY result
           from its (in-memory) cache — which would read as "No groups yet". */}

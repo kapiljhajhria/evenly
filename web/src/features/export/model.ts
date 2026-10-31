@@ -78,6 +78,7 @@ export interface InsightsSection {
 }
 
 export interface ExportReceipt {
+  expenseId: string;
   path: string;
   caption: string;
   /**
@@ -271,6 +272,7 @@ export function buildExport(input: ExportInput): ExportModel {
     for (const [index, path] of files.entries()) {
       const nth = files.length > 1 ? ` - ${index + 1} of ${files.length}` : '';
       receipts.push({
+        expenseId: expense.id,
         path,
         caption:
           `${pdfDate(expense.date, dateFormat)} · ${description} · ${money(expense.amountPaise)} · paid by ${payer}` +

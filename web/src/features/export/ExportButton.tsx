@@ -117,7 +117,9 @@ export function ExportButton({
           >
             {busy === 'zip' ? progressLabel(progress) : 'Download all files (.zip)'}
           </Button>
-          <p className="text-center text-xs text-slate-400">The PDF plus every receipt as its original file.</p>
+          <p className="text-center text-xs text-pretty text-slate-400">
+            The PDF, every receipt as its original file, and the same data as JSON — for spreadsheets or AI tools.
+          </p>
         </>
       )}
       <ErrorNote>{error}</ErrorNote>

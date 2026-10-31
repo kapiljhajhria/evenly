@@ -9,9 +9,11 @@ import {
   pdfMoney,
   zipEntryNames,
   zipFileName,
+  type ExportInput,
   type ExportModel,
   type InsightsSection,
 } from './model.js';
+import { buildExportJson } from './json.js';
 import { categoryColor, FAINT, INK, MARIGOLD, MUTED, OWED, OWES, PAPER, RULE, tagStyle, type LedgerTag, type Rgb } from './tags.js';
 import { insertionIndices, receiptKind } from '../receipt/kind.js';
 import { usePreferences } from '../../stores/preferences.js';
@@ -50,10 +52,15 @@ export async function exportGroupPdf(args: ExportArgs): Promise<ExportResult> {
  * the PDF; fflate is loaded only when someone asks for a ZIP.
  */
 export async function exportGroupZip(args: ExportArgs): Promise<ExportResult & { originals: number }> {
-  const [built, { zip }] = await Promise.all([buildGroupPdf(args), import('fflate')]);
+  const [built, { zip, strToU8 }] = await Promise.all([buildGroupPdf(args), import('fflate')]);
   const names = zipEntryNames(built.model.receipts);
   const files: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = {
     [built.fileName]: [built.bytes, { level: 0 }],
+    // The same facts as data, for spreadsheets and AI tools: far cheaper to
+    // read than the PDF, and nothing is lost to layout.
+    [built.fileName.replace(/\.pdf$/i, '.json')]: strToU8(
+      JSON.stringify(buildExportJson(built.input, built.model, names), null, 2),
+    ),
   };
   let originals = 0;
   for (const [index, receipt] of built.model.receipts.entries()) {
@@ -116,7 +123,7 @@ interface PdfAttachment {
  */
 async function buildGroupPdf(
   args: ExportArgs,
-): Promise<{ bytes: Uint8Array; fileName: string; model: ExportModel; result: ExportResult }> {
+): Promise<{ bytes: Uint8Array; fileName: string; model: ExportModel; input: ExportInput; result: ExportResult }> {
   const { onProgress } = args;
   onProgress?.({ step: 'loading' });
 
@@ -138,7 +145,7 @@ async function buildGroupPdf(
     .reverse();
 
   const generatedAt = new Date();
-  const model = buildExport({
+  const input: ExportInput = {
     groupName: args.groupName,
     closed: args.closed,
     members: args.members,
@@ -150,7 +157,8 @@ async function buildGroupPdf(
     rupeeSign: fonts !== null,
     // Whoever exports gets their own insights alongside the group's.
     myMemberId: args.members.find((m) => m.uid && m.uid === auth.currentUser?.uid)?.id ?? null,
-  });
+  };
+  const model = buildExport(input);
 
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const font = fonts ? registerFonts(doc, fonts) : 'helvetica';
@@ -228,7 +236,7 @@ async function buildGroupPdf(
     addPageNumbers(doc, pageWidth, pageHeight);
     bytes = new Uint8Array(doc.output('arraybuffer'));
   }
-  return { bytes, fileName, model, result: { receiptCount: model.receipts.length, missingReceipts } };
+  return { bytes, fileName, model, input, result: { receiptCount: model.receipts.length, missingReceipts } };
 }
 
 /**

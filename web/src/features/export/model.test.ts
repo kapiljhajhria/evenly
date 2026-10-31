@@ -187,8 +187,8 @@ describe('buildExport', () => {
       }),
     );
     expect(model.receipts).toEqual([
-      { path: 'receipts/g/a.jpg', caption: '22-aug-26 · Dinner · Rs 300.01 · paid by Asha', fileStem: '2026-08-22 Dinner Rs 300.01' },
-      { path: 'receipts/g/b.webp', caption: '23-aug-26 · Cab · Rs 300.01 · paid by Asha', fileStem: '2026-08-23 Cab Rs 300.01' },
+      { expenseId: 'a', path: 'receipts/g/a.jpg', caption: '22-aug-26 · Dinner · Rs 300.01 · paid by Asha', fileStem: '2026-08-22 Dinner Rs 300.01' },
+      { expenseId: 'b', path: 'receipts/g/b.webp', caption: '23-aug-26 · Cab · Rs 300.01 · paid by Asha', fileStem: '2026-08-23 Cab Rs 300.01' },
     ]);
   });
 

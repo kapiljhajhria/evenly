@@ -201,6 +201,10 @@ export function SettleUpPage() {
             <EmptyState title="Nothing to settle" body="Everyone is square in this group." />
           ) : (
             <div className="space-y-4">
+              <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-pretty text-amber-900 ring-1 ring-amber-200">
+                <span className="font-medium">Before anyone pays:</span> check with the group that every expense has
+                been added. A payment made before the last bill goes in can mean paying twice, or chasing money back.
+              </p>
               <div className="space-y-2">
                 <p className="px-1 text-sm font-medium text-slate-700">
                   {mine.length > 0 ? 'Your payments' : 'Nothing for you to pay or receive right now'}
