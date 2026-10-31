@@ -228,8 +228,12 @@ export function ExpenseForm({
       {/* Not a <Field>: that is a <label>, and a label forwards every click
           inside it to its first control — the name box or a button here. */}
       <div className="space-y-1.5">
-        <span className="text-sm font-medium text-slate-700">Location</span>
-        <LocationField capture={locationCapture} />
+        <span className="block text-sm font-medium text-slate-700">Where it happened</span>
+        <span className="block text-xs text-pretty text-slate-500">
+          The place of the expense itself — the restaurant, the hotel, the pump — not where you were when you paid or
+          recorded it. It feeds the map and the route on the Insights page.
+        </span>
+        <LocationField capture={locationCapture} category={settlementMode ? null : category} />
       </div>
 
       {withReceipt && !settlementMode && <ReceiptField value={receipts} onChange={setReceipts} />}

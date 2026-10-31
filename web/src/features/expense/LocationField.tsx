@@ -42,10 +42,20 @@ function lastPin(): { lat: number; lng: number; zoom: number } {
   return INDIA;
 }
 
-/** Optional, opt-in: nothing is requested until a button is pressed. */
-export function LocationField({ capture: control }: { capture: LocationCapture }) {
+/** Categories that are usually paid for somewhere other than where they happen. */
+const BOOKED_FROM_ELSEWHERE = new Set(['stay']);
+
+/**
+ * Optional, opt-in: nothing is requested until a button is pressed.
+ *
+ * `category` is the expense's category key. For a stay, "use current
+ * location" is nearly always wrong — the hotel was booked from the lunch
+ * table or the sofa — so the map comes first and a GPS fix gets a warning.
+ */
+export function LocationField({ capture: control, category = null }: { capture: LocationCapture; category?: string | null }) {
   const { location, status, error, capture, set, rename, clear } = control;
   const [mode, setMode] = useState<'buttons' | 'paste' | 'pick'>('buttons');
+  const booked = category !== null && BOOKED_FROM_ELSEWHERE.has(category);
 
   if (mode === 'pick') {
     const start = location ? { lat: location.lat, lng: location.lng, zoom: 16 } : lastPin();
@@ -90,6 +100,12 @@ export function LocationField({ capture: control }: { capture: LocationCapture }
           {formatCoords(location)}
           {location.accuracy !== null ? ` · ±${location.accuracy}m` : ' · entered by hand'}
         </p>
+        {booked && location.accuracy !== null && (
+          <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-pretty text-amber-900 ring-1 ring-amber-200">
+            This is where you are now. If the hotel is somewhere else, use <span className="font-medium">Adjust on map</span>{' '}
+            to put the pin on the hotel.
+          </p>
+        )}
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <button type="button" onClick={() => setMode('pick')} className="font-medium text-slate-600 hover:text-slate-900">
             Adjust on map
@@ -104,21 +120,31 @@ export function LocationField({ capture: control }: { capture: LocationCapture }
     return <ManualEntry onUse={set} onCancel={() => setMode('buttons')} onPick={() => setMode('pick')} />;
   }
 
+  const here = (
+    <Button key="here" type="button" variant="secondary" onClick={capture} busy={status === 'locating'}>
+      {status === 'locating' ? 'Getting location…' : 'Use current location'}
+    </Button>
+  );
+  const pick = (
+    <Button key="pick" type="button" variant="secondary" onClick={() => setMode('pick')}>
+      {booked ? 'Pick the hotel on the map' : 'Pick on map'}
+    </Button>
+  );
+  const paste = (
+    <Button key="paste" type="button" variant="secondary" onClick={() => setMode('paste')}>
+      Paste link or coordinates
+    </Button>
+  );
   return (
     <div className="space-y-1.5">
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" onClick={capture} busy={status === 'locating'}>
-          {status === 'locating' ? 'Getting location…' : 'Use current location'}
-        </Button>
-        <Button type="button" variant="secondary" onClick={() => setMode('pick')}>
-          Pick on map
-        </Button>
-        <Button type="button" variant="secondary" onClick={() => setMode('paste')}>
-          Paste link or coordinates
-        </Button>
-      </div>
+      <div className="flex flex-wrap gap-2">{booked ? [pick, paste, here] : [here, pick, paste]}</div>
       {error && <p className="text-xs text-amber-700">{error}</p>}
-      {!error && <p className="text-xs text-slate-500">Optional. Only asked for when you tap it.</p>}
+      {!error && booked && (
+        <p className="text-xs text-pretty text-slate-500">
+          Optional. Use the hotel's location, not where you booked it from — a stay is where the day ends on the route.
+        </p>
+      )}
+      {!error && !booked && <p className="text-xs text-slate-500">Optional. Only asked for when you tap it.</p>}
     </div>
   );
 }
