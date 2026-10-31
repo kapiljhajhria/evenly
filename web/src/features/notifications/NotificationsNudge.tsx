@@ -3,7 +3,8 @@ import { Link } from 'react-router';
 import { Button, Card, ErrorNote } from '../../components/ui.js';
 import { useAuth } from '../../hooks/useAuth.js';
 import { readLocal, writeLocal } from '../../lib/storage.js';
-import { enablePush, pushState, type PushState } from './push.js';
+import { currentEnv, enablePush, pushState, type PushState } from './push.js';
+import { beforeTapHint } from './help.js';
 
 const DISMISS_KEY = 'evenly.push.nudgeDismissed';
 
@@ -23,9 +24,11 @@ export function NotificationsNudge() {
   const [dismissed, setDismissed] = useState(() => readLocal(DISMISS_KEY) === '1');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
 
   useEffect(() => {
     void pushState().then(setState, () => setState('unsupported'));
+    void currentEnv().then((env) => setHint(beforeTapHint(env)));
   }, []);
 
   if (!user || dismissed || state !== 'off') return null;
@@ -66,6 +69,7 @@ export function NotificationsNudge() {
           Don't remind me again
         </button>
       </div>
+      {hint && <p className="text-xs text-pretty text-slate-500">{hint}</p>}
       <p className="text-xs text-slate-400">
         Per device. Change your mind any time in{' '}
         <Link to="/settings" className="underline underline-offset-2 hover:text-slate-600">

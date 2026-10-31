@@ -5,8 +5,15 @@ import { NOTIFICATION_KINDS, wants } from '@app/shared';
 import { Button, Card, ErrorNote } from '../../components/ui.js';
 import { useAuth } from '../../hooks/useAuth.js';
 import { notificationPrefsDoc } from '../../lib/paths.js';
-import { detectPlatform } from '../../lib/platform.js';
-import { disablePush, enablePush, pushState, sendTestNotification, type PushState } from './push.js';
+import { currentEnv, disablePush, enablePush, pushState, sendTestNotification, type PushState } from './push.js';
+import {
+  beforeTapHint,
+  blockedHelp,
+  installHelp,
+  nothingArrivedHelp,
+  unsupportedHelp,
+  type NotificationEnv,
+} from './help.js';
 
 const KIND_LABELS: Record<NotificationKind, { label: string; hint: string }> = {
   expenses: { label: 'New expenses', hint: 'Someone adds an expense you are part of' },
@@ -18,12 +25,6 @@ const KIND_LABELS: Record<NotificationKind, { label: string; hint: string }> = {
   digest: { label: 'Weekly summary', hint: 'Monday morning: what was added last week, and where you stand' },
 };
 
-const BLOCKED_HELP: Record<ReturnType<typeof detectPlatform>, string> = {
-  ios: 'On iPhone: Settings → Notifications → Evenly → Allow Notifications.',
-  android: 'On Android: long-press the Evenly icon → App info → Notifications, or the lock icon in the address bar → Permissions.',
-  desktop: 'Click the lock icon next to the address, set Notifications to Allow, then reload.',
-};
-
 /** Settings → Notifications for this device, plus what to be told about. */
 export function NotificationsCard() {
   const { user } = useAuth();
@@ -32,9 +33,11 @@ export function NotificationsCard() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [env, setEnv] = useState<NotificationEnv | null>(null);
 
   useEffect(() => {
     void pushState().then(setState, () => setState('unsupported'));
+    void currentEnv().then(setEnv);
   }, []);
 
   useEffect(() => {
@@ -46,7 +49,9 @@ export function NotificationsCard() {
     );
   }, [user]);
 
-  if (!user || state === null) return null;
+  if (!user || state === null || env === null) return null;
+  const hint = beforeTapHint(env);
+  const install = installHelp(env);
 
   const act = async (key: string, work: () => Promise<unknown>) => {
     setBusy(key);
@@ -73,40 +78,40 @@ export function NotificationsCard() {
       {state === 'unconfigured' && (
         <p className="text-sm text-slate-600">Notifications are not set up for this build of the app yet.</p>
       )}
-      {state === 'unsupported' && (
-        <p className="text-sm text-slate-600">
-          This browser cannot show notifications. Chrome, Edge, Firefox and Safari can.
-        </p>
-      )}
+      {state === 'unsupported' && <p className="text-sm text-pretty text-slate-600">{unsupportedHelp(env)}</p>}
       {state === 'needs-install' && (
-        <div className="space-y-1 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
-          <p className="font-display text-lg font-semibold">On iPhone, install Evenly first</p>
-          <p>
-            In Safari tap <span className="font-medium">Share</span> →{' '}
-            <span className="font-medium">Add to Home Screen</span>, open Evenly from your Home Screen, and come back
-            here. iPhones only allow notifications for installed apps.
-          </p>
+        <div className="space-y-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
+          <p className="font-display text-lg font-semibold">{install.title}</p>
+          <ol className="list-decimal space-y-1 pl-5">
+            {install.steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          <p className="text-xs text-amber-800">{install.note}</p>
         </div>
       )}
       {state === 'blocked' && (
         <div className="space-y-1 rounded-xl bg-red-50 p-3 text-sm text-red-900 ring-1 ring-red-100">
           <p className="font-display text-lg font-semibold">Notifications are blocked for Evenly</p>
-          <p>{BLOCKED_HELP[detectPlatform()]}</p>
+          <p className="text-pretty">{blockedHelp(env)}</p>
         </div>
       )}
       {state === 'off' && (
-        <Button
-          type="button"
-          className="w-full"
-          busy={busy === 'enable'}
-          onClick={() =>
-            // No await before enablePush: iOS needs the tap to still be "live"
-            // when the permission prompt is requested.
-            void act('enable', async () => setState(await enablePush(user.uid)))
-          }
-        >
-          Turn on notifications on this device
-        </Button>
+        <>
+          {hint && <p className="text-xs text-pretty text-slate-500">{hint}</p>}
+          <Button
+            type="button"
+            className="w-full"
+            busy={busy === 'enable'}
+            onClick={() =>
+              // No await before enablePush: iOS needs the tap to still be "live"
+              // when the permission prompt is requested.
+              void act('enable', async () => setState(await enablePush(user.uid)))
+            }
+          >
+            Turn on notifications on this device
+          </Button>
+        </>
       )}
 
       {state === 'on' && (
@@ -147,7 +152,7 @@ export function NotificationsCard() {
                   const { data } = await sendTestNotification({});
                   setTestResult(
                     data.devices > 0
-                      ? `Sent to ${data.devices} device${data.devices === 1 ? '' : 's'}. It should arrive in a few seconds.`
+                      ? `Sent to ${data.devices} device${data.devices === 1 ? '' : 's'}. It should arrive in a few seconds. ${nothingArrivedHelp(env)}`
                       : 'No devices are registered yet.',
                   );
                 })

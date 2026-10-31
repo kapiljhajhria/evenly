@@ -3,6 +3,7 @@ import { httpsCallable } from 'firebase/functions';
 import { app, functions } from '../../lib/firebase.js';
 import { deviceDoc } from '../../lib/paths.js';
 import { detectPlatform, isStandalonePwa } from '../../lib/platform.js';
+import { detectBrowser, detectOs, failureHelp, type NotificationEnv } from './help.js';
 import { readLocal, writeLocal } from '../../lib/storage.js';
 
 /**
@@ -62,14 +63,22 @@ async function hash(token: string): Promise<string> {
 /** Get (or refresh) this device's token and store it. Permission must already be granted. */
 async function register(uid: string): Promise<void> {
   const { getMessaging, getToken } = await import('firebase/messaging');
+  const registration = await serviceWorker();
+  const request = () => getToken(getMessaging(app), { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
   let token: string;
   try {
-    token = await getToken(getMessaging(app), {
-      vapidKey: VAPID_KEY,
-      serviceWorkerRegistration: await serviceWorker(),
-    });
-  } catch (error) {
-    throw new Error(await explainPushFailure(error));
+    token = await request();
+  } catch (firstError) {
+    // After the app was uninstalled or its data cleared, the browser can
+    // still hold the old push subscription and refuse a new one with
+    // "push service error". Drop whatever is there and try once more.
+    const stale = await registration.pushManager.getSubscription().catch(() => null);
+    if (stale) await stale.unsubscribe().catch(() => undefined);
+    try {
+      token = await request();
+    } catch (secondError) {
+      throw new Error(await explainPushFailure(stale ? secondError : firstError));
+    }
   }
   if (!token) throw new Error('Could not get a notification token for this device.');
   const id = await hash(token);
@@ -80,29 +89,26 @@ async function register(uid: string): Promise<void> {
   writeLocal(DEVICE_KEY, id);
 }
 
-/**
- * Web push on Chromium browsers goes through Google's push service. Brave
- * turns that off by default for privacy, and the browser then reports the
- * opaque "Registration failed - push service error". Say what to do instead.
- */
+/** Brave identifies itself only through this API; its user agent says Chrome. */
+export async function isBraveBrowser(): Promise<boolean> {
+  const brave = (navigator as Navigator & { brave?: { isBrave?: () => Promise<boolean> } }).brave;
+  return brave?.isBrave ? await brave.isBrave().catch(() => false) : false;
+}
+
+/** Browser, OS and installed-or-tab, for the messages in help.ts. */
+export async function currentEnv(): Promise<NotificationEnv> {
+  const ua = navigator.userAgent;
+  return {
+    os: detectOs(ua, navigator.maxTouchPoints ?? 0),
+    browser: detectBrowser(ua, await isBraveBrowser()),
+    standalone: isStandalonePwa(),
+  };
+}
+
+/** The browser's opaque registration error, as what to do here. */
 async function explainPushFailure(error: unknown): Promise<string> {
   const message = error instanceof Error ? error.message : String(error);
-  const pushServiceDown = /push service error|AbortError|Registration failed/i.test(message);
-  if (!pushServiceDown) return message || 'Could not register this device for notifications.';
-
-  const brave = (navigator as Navigator & { brave?: { isBrave?: () => Promise<boolean> } }).brave;
-  const isBrave = brave?.isBrave ? await brave.isBrave().catch(() => false) : false;
-  if (isBrave) {
-    return (
-      'Brave blocks the push service Evenly uses, so notifications cannot be set up here. ' +
-      'To allow it: open brave://settings/privacy, turn on "Use Google services for push messaging", ' +
-      'restart Brave and try again. Or use Chrome, Edge or Safari for notifications.'
-    );
-  }
-  return (
-    'The browser could not reach its push service, so notifications cannot be set up right now. ' +
-    'A VPN, firewall or privacy extension can block it; try again on another network, or in Chrome, Edge or Safari.'
-  );
+  return failureHelp(await currentEnv(), message);
 }
 
 /**
