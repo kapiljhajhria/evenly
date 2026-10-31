@@ -102,6 +102,8 @@ export function InsightsPage() {
               membersById={byId}
               selected={memberId}
               onSelect={(id) => setMemberId((current) => (current === id ? null : id))}
+              categoryFiltered={category !== null}
+              hasSettlements={expenses.some((e) => e.type === 'settlement' && !e.deletedAt)}
             />
           </div>
 
@@ -337,47 +339,78 @@ function MemberBreakdown({
   membersById,
   selected,
   onSelect,
+  categoryFiltered,
+  hasSettlements,
 }: {
   members: MemberSpend[];
   nameOf: (id: string) => string;
   membersById: Record<string, WithId<Member<Timestamp>>>;
   selected: string | null;
   onSelect: (memberId: string) => void;
+  /** A category is picked: the gap is for that category only, so it is not "owes". */
+  categoryFiltered: boolean;
+  /** Payments between members exist, so paid vs share is not the live balance. */
+  hasSettlements: boolean;
 }) {
   const visible = members.filter((m) => m.paidPaise > 0 || m.sharePaise > 0);
   const max = Math.max(1, ...visible.map((m) => Math.max(m.sharePaise, m.paidPaise)));
+  const width = (paise: number) => `${Math.max((paise / max) * 100, paise > 0 ? 2 : 0)}%`;
 
   return (
     <Card className="space-y-4">
-      <SectionTitle title="Who spent what" hint="Share is what each person's part of the bills came to; paid is what they put down." />
+      <SectionTitle
+        title="Who spent what"
+        hint="Paid is what came out of their pocket; share is their part of the bills. The gap between the two is what they owe, or are owed."
+      />
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600" aria-hidden>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-5 rounded-full bg-brand-600" /> Paid
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-5 rounded-full bg-accent-400" /> Share of bills
+        </span>
+      </div>
       {visible.length === 0 ? (
         <p className="text-sm text-slate-500">Nothing in this view.</p>
       ) : (
         <ul className="space-y-1">
           {visible.map((m) => {
             const on = selected === m.memberId;
+            const dim = selected !== null && !on;
             const member = membersById[m.memberId];
+            const gap = m.sharePaise - m.paidPaise;
             return (
               <li key={m.memberId}>
                 <button
                   type="button"
                   aria-pressed={on}
                   onClick={() => onSelect(m.memberId)}
-                  className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-slate-50 ${on ? 'bg-accent-100/70 hover:bg-accent-100' : ''}`}
+                  className={`flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-slate-50 ${on ? 'bg-accent-100/70 hover:bg-accent-100' : ''} ${dim ? 'opacity-55' : ''}`}
                 >
-                  <Avatar name={member?.name ?? '?'} photoURL={member?.photoURL} className="size-9" />
+                  <Avatar name={member?.name ?? '?'} photoURL={member?.photoURL} className="mt-0.5 size-9" />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2 text-sm">
                       <span className="truncate font-medium text-slate-800">{nameOf(m.memberId)}</span>
-                      <span className="tabular font-semibold text-slate-900">{formatPaise(m.sharePaise)}</span>
+                      {!categoryFiltered && (
+                        <span
+                          className={`tabular shrink-0 text-xs font-medium ${gap > 0 ? 'text-red-600' : gap < 0 ? 'text-emerald-600' : 'text-slate-400'}`}
+                        >
+                          {gap > 0 ? `owes ${formatPaise(gap)}` : gap < 0 ? `is owed ${formatPaise(-gap)}` : 'even'}
+                        </span>
+                      )}
                     </span>
-                    <span aria-hidden className="mt-1.5 block h-1.5 rounded-full bg-slate-100">
-                      <span
-                        className={`block h-full rounded-full ${on ? 'bg-brand-600' : 'bg-accent-400'}`}
-                        style={{ width: `${(m.sharePaise / max) * 100}%` }}
-                      />
+                    <span className="mt-1.5 grid grid-cols-[2.5rem_1fr_auto] items-center gap-x-2 gap-y-1 text-xs">
+                      <span className="text-slate-500">Paid</span>
+                      <span aria-hidden className="block h-1.5 rounded-full bg-slate-100">
+                        <span className="block h-full rounded-full bg-brand-600 transition-[width]" style={{ width: width(m.paidPaise) }} />
+                      </span>
+                      <span className="tabular w-20 text-right font-semibold text-slate-900">{formatPaise(m.paidPaise)}</span>
+                      <span className="text-slate-500">Share</span>
+                      <span aria-hidden className="block h-1.5 rounded-full bg-slate-100">
+                        <span className="block h-full rounded-full bg-accent-400 transition-[width]" style={{ width: width(m.sharePaise) }} />
+                      </span>
+                      <span className="tabular w-20 text-right text-slate-700">{formatPaise(m.sharePaise)}</span>
                     </span>
-                    <span className="tabular mt-1 block text-xs text-slate-500">paid {formatPaise(m.paidPaise)}</span>
                   </span>
                 </button>
               </li>
@@ -385,6 +418,19 @@ function MemberBreakdown({
           })}
         </ul>
       )}
+      <p className="text-xs text-pretty text-slate-500">
+        {selected !== null ? (
+          <>
+            Showing the whole page from <span className="font-medium text-slate-700">{nameOf(selected)}</span>&apos;s side.
+            Tap the name again, or <span className="font-medium text-slate-700">Everyone</span> at the top, to go back.
+          </>
+        ) : (
+          'Tap a name to see the whole page from their side: where their share went, by day and by place.'
+        )}
+        {hasSettlements && !categoryFiltered && (
+          <> Owes and is owed here are before any payments between members; the group page has the live balances.</>
+        )}
+      </p>
     </Card>
   );
 }
