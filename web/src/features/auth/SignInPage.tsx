@@ -4,7 +4,7 @@ import { useAuth, useAuthActions } from '../../hooks/useAuth.js';
 import { Button, ErrorNote, Field, FullPageSpinner, Input } from '../../components/ui.js';
 import { isInAppWebview } from '../../lib/webview.js';
 import { WebviewBanner } from '../join/WebviewBanner.js';
-import { Logo } from '../../components/Layout.js';
+import { BuildStamp, Logo } from '../../components/Layout.js';
 
 type Mode = 'signin' | 'register';
 
@@ -124,6 +124,7 @@ export function SignInPage() {
         >
           {mode === 'signin' ? 'New here? Create an account' : 'Already have an account? Sign in'}
         </button>
+        <BuildStamp className="pt-2 pb-0" />
       </div>
     </div>
   );

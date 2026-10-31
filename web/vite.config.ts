@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import type { OutputChunk } from 'rollup';
 import react from '@vitejs/plugin-react';
@@ -103,11 +104,27 @@ function lazyChunksStayLazy(): Plugin {
   };
 }
 
+/**
+ * What the footer shows so two people can check they are on the same build:
+ * the short commit and when that commit was made. Falls back to the build
+ * time when git is not available (e.g. a CI checkout without history).
+ */
+function buildInfo(): { commit: string | null; at: string } {
+  try {
+    const git = (args: string) => execSync(`git ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    const dirty = git('status --porcelain -- . ../shared').length > 0;
+    return { commit: git('rev-parse --short HEAD') + (dirty ? '+' : ''), at: git('log -1 --format=%cI') };
+  } catch {
+    return { commit: null, at: new Date().toISOString() };
+  }
+}
+
 export default defineConfig(({ command, mode }) => {
   const envDir = process.cwd();
   if (command === 'build') assertProductionEnv(mode, envDir);
 
   return {
+    define: { __BUILD__: JSON.stringify(buildInfo()) },
     plugins: [
       lazyChunksStayLazy(),
       react(),

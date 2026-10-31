@@ -5,7 +5,7 @@ import { getJoinInfo, joinGroup, type JoinInfo } from '../group/api.js';
 import { Avatar, Button, Card, ErrorNote, FullPageSpinner, Spinner } from '../../components/ui.js';
 import { isInAppWebview } from '../../lib/webview.js';
 import { WebviewBanner } from './WebviewBanner.js';
-import { Logo } from '../../components/Layout.js';
+import { BuildStamp, Logo } from '../../components/Layout.js';
 
 function callableMessage(error: unknown): string {
   const err = error as { code?: string; message?: string };
@@ -135,6 +135,7 @@ export function JoinPage() {
           </ul>
         </div>
       )}
+      <BuildStamp />
     </div>
   );
 }

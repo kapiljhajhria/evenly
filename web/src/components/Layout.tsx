@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
+import { formatDateTimeOf } from '@app/shared';
 
 /** The "=" mark: two even bars. Same idea as the app icon. */
 export function LogoMark({ className = 'size-7' }: { className?: string }) {
@@ -73,6 +74,24 @@ export function AppShell({
         </div>
       </header>
       <main className={`${container} flex-1 space-y-4 py-4 sm:py-6 lg:py-8`}>{children}</main>
+      <BuildStamp className={container} />
     </div>
+  );
+}
+
+/**
+ * One muted line at the foot of every page: which build this is and when it
+ * last changed. "What does it say at the bottom?" is then enough to check
+ * that two people are looking at the same version.
+ */
+export function BuildStamp({ className = '' }: { className?: string }) {
+  const at = new Date(__BUILD__.at);
+  const when = Number.isNaN(at.getTime()) ? __BUILD__.at : formatDateTimeOf(at);
+  return (
+    <footer className={`${className} pt-6 pb-4 text-center text-[11px] text-slate-400`}>
+      <span title={__BUILD__.at}>
+        Evenly · {__BUILD__.commit ? `version ${__BUILD__.commit}` : 'dev build'} · updated {when}
+      </span>
+    </footer>
   );
 }

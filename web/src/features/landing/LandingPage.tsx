@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../../hooks/useAuth.js';
-import { Logo } from '../../components/Layout.js';
+import { BuildStamp, Logo } from '../../components/Layout.js';
 import { Button } from '../../components/ui.js';
 
 /**
@@ -285,6 +285,7 @@ export function LandingPage() {
           <Logo className="text-slate-900" />
           <p>Made for splitting bills in India · ₹ only</p>
         </div>
+        <BuildStamp className="mx-auto max-w-6xl px-4 pt-0 sm:px-6 lg:px-8" />
       </footer>
     </div>
   );
