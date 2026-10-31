@@ -75,6 +75,8 @@ export function ExpenseList({
               const { canEdit, canCategorize, canDelete, canManageReceipt, canConfirm } = expensePermissions({
                 expense,
                 payerUid: payer?.uid,
+                receiverUid:
+                  expense.type === 'settlement' ? (membersById[expense.splits[0]?.memberId ?? '']?.uid ?? null) : null,
                 uid,
                 groupCreatedBy,
                 groupActive,
@@ -200,6 +202,16 @@ export function ExpenseList({
                           canConfirm={canConfirm}
                           recorderName={members.find((m) => m.uid === expense.createdBy)?.name ?? 'whoever added it'}
                           recordedByMe={expense.createdBy === uid}
+                          payment={
+                            isSettlement
+                              ? {
+                                  payerName: whoIs(expense.paidBy),
+                                  receiverName: nameOf(receiverId ?? ''),
+                                  amIPayer: expense.paidBy === myMemberId,
+                                  amIReceiver: receiverId === myMemberId,
+                                }
+                              : null
+                          }
                         />
                       )}
 

@@ -4,6 +4,7 @@ export { updateExpense } from './updateExpense.js';
 export { removeMember } from './removeMember.js';
 export { deleteGroup } from './deleteGroup.js';
 export { autoClose } from './autoClose.js';
+export { weeklyDigest } from './weeklyDigest.js';
 export { onCommentCreated, sendTestNotification } from './notifications.js';
 export { setGroupClosed } from './closeGroup.js';
 export { resolveMapLink } from './resolveMapLink.js';

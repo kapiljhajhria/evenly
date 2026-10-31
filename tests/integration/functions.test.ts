@@ -228,3 +228,23 @@ describe('onExpenseWrite: direct debts (pairs)', () => {
     expect(doc['pairs']).toEqual({});
   });
 });
+
+describe("onExpenseWrite: 'all my expenses are in'", () => {
+  it('clears the tick of whoever adds another expense, and nobody else', async () => {
+    const memberA = groupRef().collection('members').doc(SLOT_A);
+    const memberB = groupRef().collection('members').doc(SLOT_B);
+    await memberA.update({ allInAt: FieldValue.serverTimestamp() });
+    await memberB.update({ uid: 'bob-uid', allInAt: FieldValue.serverTimestamp() });
+
+    // Added by ALICE (slot A).
+    await addExpense({ amountPaise: 6000, paidBy: SLOT_A, memberIds: [SLOT_A, SLOT_B] });
+    await waitForBalances((b) => b[SLOT_A] === 3000);
+
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline && (await memberA.get()).data()?.['allInAt'] !== null) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    expect((await memberA.get()).data()?.['allInAt']).toBeNull();
+    expect((await memberB.get()).data()?.['allInAt']).toBeTruthy();
+  });
+});

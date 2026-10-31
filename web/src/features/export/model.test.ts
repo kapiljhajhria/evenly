@@ -305,6 +305,35 @@ describe('buildExport', () => {
     expect(model.planNote).toBeNull();
   });
 
+  it("keeps only one member's balance and payments in their view", () => {
+    const three = [
+      { id: 'k', name: 'Kapil' },
+      { id: 'm', name: 'Mihir' },
+      { id: 'p', name: 'Prabhakar' },
+    ];
+    const each = (amount: number) => ['k', 'm', 'p'].map((memberId) => ({ memberId, input: 1, owedPaise: amount }));
+    const model = buildExport(
+      input({
+        members: three,
+        balances: { k: 50000, m: -40000, p: -10000 },
+        viewMemberId: 'p',
+        myMemberId: 'p',
+        expenses: [
+          expense({ id: 'e1', amountPaise: 90000, paidBy: 'k', splits: each(30000) }),
+          expense({ id: 'e2', amountPaise: 30000, paidBy: 'p', splits: each(10000) }),
+        ],
+      }),
+    );
+    expect(model.title).toBe("Goa trip — Prabhakar's view");
+    expect(model.balanceRows).toEqual([['Prabhakar', 'owes Rs 100.00']]);
+    expect(model.transferRows).toEqual([
+      ['Prabhakar', 'Kapil', 'Rs 200.00'],
+      ['Mihir', 'Prabhakar', 'Rs 100.00'],
+    ]);
+    expect(model.groupInsights).toBeNull();
+    expect(model.myInsights?.heading).toBe('Your insights — Prabhakar');
+  });
+
   it('adds no steps when nothing is re-routed', () => {
     const model = buildExport(input());
     expect(model.directRows).toEqual([]);

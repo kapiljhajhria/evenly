@@ -47,7 +47,14 @@ service cloud.firestore {
         return request.resource.data.displayName is string
           && request.resource.data.displayName.size() > 0
           && request.resource.data.displayName.size() <= 40
-          && (request.resource.data.photoURL == null || request.resource.data.photoURL is string);
+          && (request.resource.data.photoURL == null || request.resource.data.photoURL is string)
+          // UPI id for the "Pay via UPI" button: optional, `name@bank`-ish, short.
+          && (!('upiId' in request.resource.data)
+              || request.resource.data.upiId == null
+              || (request.resource.data.upiId is string
+                  && request.resource.data.upiId.size() >= 5
+                  && request.resource.data.upiId.size() <= 60
+                  && request.resource.data.upiId.matches('^[a-zA-Z0-9][a-zA-Z0-9._-]+@[a-zA-Z][a-zA-Z0-9]+$')));
       }
 
       // Display name + avatar of people you share groups with.
@@ -56,7 +63,7 @@ service cloud.firestore {
       // createdAt is set once, at create.
       allow update: if isSignedIn() && uid() == userId && validProfile()
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['displayName', 'photoURL']);
+             .hasOnly(['displayName', 'photoURL', 'upiId']);
       allow delete: if false;
     }
 
@@ -82,13 +89,14 @@ service cloud.firestore {
     match /users/{userId}/settings/notifications {
       allow read: if isSignedIn() && uid() == userId;
       allow create, update: if isSignedIn() && uid() == userId
-        && request.resource.data.keys().hasOnly(['expenses', 'payments', 'confirmations', 'deletions', 'comments', 'groups'])
+        && request.resource.data.keys().hasOnly(['expenses', 'payments', 'confirmations', 'deletions', 'comments', 'groups', 'digest'])
         && request.resource.data.get('expenses', true) is bool
         && request.resource.data.get('payments', true) is bool
         && request.resource.data.get('confirmations', true) is bool
         && request.resource.data.get('deletions', true) is bool
         && request.resource.data.get('comments', true) is bool
-        && request.resource.data.get('groups', true) is bool;
+        && request.resource.data.get('groups', true) is bool
+        && request.resource.data.get('digest', true) is bool;
       allow delete: if false;
     }
 
@@ -191,9 +199,11 @@ service cloud.firestore {
           && request.resource.data.claimedAt == resource.data.claimedAt
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoURL']))
         // A claimer may rename their own slot — this is the name everyone else
-        // in the group sees, independent of their account name.
+        // in the group sees, independent of their account name — and tick
+        // "all my expenses are in" (a server time, or null to untick).
         || (resource.data.uid == uid()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoURL']))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoURL', 'allInAt'])
+          && (request.resource.data.get('allInAt', null) == null || request.resource.data.allInAt == request.time))
       );
 
       // removeMember callable only. Deleting a slot requires proving the member

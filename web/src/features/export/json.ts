@@ -15,6 +15,8 @@ export interface ExportJson {
   exportedAt: string;
   currency: 'INR';
   notes: string[];
+  /** Set when this is one member's view: only their entries, balance and payments. */
+  view: { memberId: string; name: string } | null;
   group: {
     name: string;
     status: 'active' | 'closed';
@@ -86,6 +88,8 @@ export function buildExportJson(input: ExportInput, model: ExportModel, receiptN
     amountRupees: rupees(t.amountPaise),
   });
 
+  const view = input.viewMemberId && names.has(input.viewMemberId) ? input.viewMemberId : null;
+  const involvesView = (t: { from: string; to: string }): boolean => view === null || t.from === view || t.to === view;
   const isGone = (e: ExportInput['expenses'][number]) => Boolean(e.deletedBy) || Boolean(e.deletedAtMs);
   const live = input.expenses.filter((e) => !isGone(e));
   const debts = pairwiseDebts(live);
@@ -107,9 +111,10 @@ export function buildExportJson(input: ExportInput, model: ExportModel, receiptN
       'balances: positive means the group owes that member; negative means they owe the group. directDebts is who owes whom, from the expenses. suggestedPayments is what the app asks people to pay.',
       'Deleted entries are listed with `deleted` set and count for nothing in balances, debts or totals.',
     ],
+    view: view === null ? null : { memberId: view, name: nameOf(view) },
     group: { name: input.groupName, status: input.closed ? 'closed' : 'active', settleMode: simplify ? 'fewest-payments' : 'direct' },
     members: input.members.map((m) => ({ id: m.id, name: m.name, joined: Boolean(m.uid) })),
-    balances: input.members.map((m) => {
+    balances: input.members.filter((m) => view === null || m.id === view).map((m) => {
       const net = netFor(input.balances, m.id);
       return {
         memberId: m.id,
@@ -119,8 +124,8 @@ export function buildExportJson(input: ExportInput, model: ExportModel, receiptN
         position: net > 0 ? 'is owed' : net < 0 ? 'owes' : 'settled',
       };
     }),
-    directDebts: debts.map(transfer),
-    suggestedPayments: paymentPlan({ balances: input.balances, debts, simplify }).map(transfer),
+    directDebts: debts.filter(involvesView).map(transfer),
+    suggestedPayments: paymentPlan({ balances: input.balances, debts, simplify }).filter(involvesView).map(transfer),
     totals: {
       spentPaise: model.totals.spentPaise,
       spentRupees: rupees(model.totals.spentPaise),

@@ -1,4 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { onSnapshot, updateDoc } from 'firebase/firestore';
+import type { UserDoc } from '@app/shared';
+import { isValidUpiId, MAX_UPI_ID, normalizeUpiId } from '@app/shared';
+import { userDoc } from '../../lib/paths.js';
 import { Link } from 'react-router';
 import { useAuth, useAuthActions } from '../../hooks/useAuth.js';
 import { useMyGroups } from '../../hooks/useMyGroups.js';
@@ -7,7 +11,7 @@ import { renameMember } from '../group/api.js';
 import { MAX_SLOT_NAME } from '../group/constants.js';
 import { AppShell } from '../../components/Layout.js';
 import { InlineEdit } from '../../components/InlineEdit.js';
-import { Avatar, Button, Card, ErrorNote } from '../../components/ui.js';
+import { Avatar, Button, Card, ErrorNote, Field, Input } from '../../components/ui.js';
 
 /**
  * Account settings. The name here is what fills in for you when a new group is
@@ -20,7 +24,36 @@ export function ProfilePage() {
   const { groups } = useMyGroups(user?.uid);
   const [error, setError] = useState<string | null>(null);
 
+  // UPI id: live from the profile doc, edited in its own small form.
+  const uid = user?.uid;
+  const [upiSaved, setUpiSaved] = useState<string | null>(null);
+  const [upiDraft, setUpiDraft] = useState<string | null>(null);
+  const [upiBusy, setUpiBusy] = useState(false);
+  const [upiError, setUpiError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!uid) return;
+    return onSnapshot(userDoc(uid), (snap) => setUpiSaved((snap.data() as UserDoc | undefined)?.upiId ?? null));
+  }, [uid]);
+
   if (!user) return null;
+
+  const saveUpi = async () => {
+    const next = normalizeUpiId(upiDraft ?? '');
+    if (next !== null && !isValidUpiId(next)) {
+      setUpiError('That does not look like a UPI ID — it should read like name@bank.');
+      return;
+    }
+    setUpiBusy(true);
+    setUpiError(null);
+    try {
+      await updateDoc(userDoc(user.uid), { upiId: next });
+      setUpiDraft(null);
+    } catch (err) {
+      setUpiError((err as Error).message || 'Could not save that.');
+    } finally {
+      setUpiBusy(false);
+    }
+  };
 
   const provider = user.providerData[0]?.providerId === 'google.com' ? 'Google' : 'Email';
 
@@ -57,6 +90,45 @@ export function ProfilePage() {
           Tap your name to change it. This is the name that fills in for you when you create a
           new group — it does not rename you in groups you have already joined.
         </p>
+      </Card>
+
+      <Card className="space-y-3">
+        <div>
+          <p className="font-display text-lg font-semibold">UPI ID</p>
+          <p className="text-sm text-pretty text-slate-500">
+            People who owe you get a one-tap <span className="font-medium text-slate-700">Pay via UPI</span> button
+            with the amount filled in. Only members of your groups can see it.
+          </p>
+        </div>
+        <form
+          className="flex items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void saveUpi();
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <Field label="Your UPI ID">
+              <Input
+                value={upiDraft ?? upiSaved ?? ''}
+                onChange={(e) => setUpiDraft(e.target.value)}
+                placeholder="name@bank"
+                maxLength={MAX_UPI_ID}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                inputMode="email"
+              />
+            </Field>
+          </div>
+          <Button type="submit" variant="secondary" busy={upiBusy} disabled={upiDraft === null || upiBusy}>
+            Save
+          </Button>
+        </form>
+        {upiSaved && upiDraft === null && (
+          <p className="text-xs text-emerald-700">✓ Saved. Clear the field and save to remove it.</p>
+        )}
+        <ErrorNote>{upiError}</ErrorNote>
       </Card>
 
       {groups.length > 0 && (

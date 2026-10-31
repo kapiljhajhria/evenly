@@ -139,6 +139,11 @@ export const updateExpense = onCall(async (request) => {
     const payerSnap = await tx.get(membersRef(groupId).doc(before.paidBy));
     const payerUid = (payerSnap.data() as Member<Timestamp> | undefined)?.uid ?? null;
     const owns = payerUid === uid || (payerUid === null && before.createdBy === uid);
+    // A payment's receiver may say it arrived ("Got it") — see mayConfirm.
+    const receiverId = before.type === 'settlement' ? (before.splits[0]?.memberId ?? null) : null;
+    const receiverUid = receiverId
+      ? ((await tx.get(membersRef(groupId).doc(receiverId))).data() as Member<Timestamp> | undefined)?.uid ?? null
+      : null;
     const wasDeleted = isDeleted(before);
 
     // Soft delete / restore. Same people who could hard-delete before: the
@@ -176,7 +181,8 @@ export const updateExpense = onCall(async (request) => {
     // everyone tidy it up costs nothing, and history still says who did.
     const keys = Object.keys(changes);
     const mayEditAll = owns || group.createdBy === uid;
-    const mayConfirm = keys.every((key) => key === 'unconfirmed') && before.createdBy === uid;
+    const mayConfirm =
+      keys.every((key) => key === 'unconfirmed') && (before.createdBy === uid || (receiverUid !== null && receiverUid === uid));
     const mayCategorize = keys.every((key) => key === 'category');
     if (!mayEditAll && !mayConfirm && !mayCategorize) {
       throw new HttpsError(

@@ -1,10 +1,12 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { formatPaise, localDateString, localTimeString, paiseToDecimalString, paymentPlan } from '@app/shared';
+import { formatPaise, localDateString, localTimeString, paiseToDecimalString, paymentPlan, upiPayUrl } from '@app/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { OFFLINE_HINT, useOnline } from '../../hooks/useOnline.js';
 import { useGroup, useMembers } from '../../hooks/useGroup.js';
 import { useDirectDebts } from '../../hooks/useDebts.js';
+import { useUpiIds } from '../../hooks/useUpiIds.js';
+import { allInSummary } from '../group/AllInCard.js';
 import { addSettlement } from './api.js';
 import { AppShell } from '../../components/Layout.js';
 import { Button, Card, EmptyState, ErrorNote, Field, FullPageSpinner, Input } from '../../components/ui.js';
@@ -36,6 +38,7 @@ export function SettleUpPage() {
   const { group, loading } = useGroup(groupId);
   const { members } = useMembers(groupId);
   const { debts } = useDirectDebts(groupId, group);
+  const upiIds = useUpiIds(members.map((m) => m.uid).filter((uid): uid is string => uid !== null));
   const [busy, setBusy] = useState<string | null>(null);
   /** Which suggestion (or 'custom') is showing its "has this been paid?" question. */
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -55,6 +58,7 @@ export function SettleUpPage() {
   const involvesMe = (t: { from: string; to: string }) => t.from === myMemberId || t.to === myMemberId;
   const mine = plan.filter(involvesMe);
   const others = plan.filter((t) => !involvesMe(t));
+  const allIn = allInSummary(members);
 
   if (loading) return <FullPageSpinner />;
   if (!group || !groupId || !user) return null;
@@ -84,6 +88,9 @@ export function SettleUpPage() {
     setError(null);
     try {
       const pending = pendingFor(files);
+      // Recorded by someone other than the receiver: the receiver gets a
+      // "Got it" to confirm it arrived. Unclaimed receiver: nobody to ask.
+      const receiverUid = members.find((m) => m.id === receiver)?.uid ?? null;
       const settlementId = await addSettlement({
         groupId,
         fromMemberId: payer,
@@ -97,6 +104,7 @@ export function SettleUpPage() {
         createdBy: user.uid,
         note: text,
         receipts: pending,
+        unconfirmed: receiverUid !== null && receiverUid !== user.uid,
       });
       await queuePicked(user.uid, groupId, settlementId, files, pending);
       navigate(`/group/${groupId}`, { replace: true });
@@ -136,6 +144,12 @@ export function SettleUpPage() {
   const suggestion = (transfer: { from: string; to: string; amountPaise: number }) => {
     const key = `${transfer.from}-${transfer.to}`;
     const asking = confirming === key;
+    const receiver = members.find((m) => m.id === transfer.to);
+    const receiverUpi = receiver?.uid ? (upiIds[receiver.uid] ?? null) : null;
+    const payLink =
+      transfer.from === myMemberId && receiverUpi
+        ? upiPayUrl({ upiId: receiverUpi, payeeName: receiver?.name ?? '', amountPaise: transfer.amountPaise, note: group.name })
+        : null;
     return (
       <li key={key}>
         <Card className="space-y-3">
@@ -153,6 +167,14 @@ export function SettleUpPage() {
                 Different amount, or add a screenshot?
               </button>
             </div>
+            {payLink && !asking && (
+              <a
+                href={payLink}
+                className="inline-flex min-h-11 items-center justify-center rounded-full bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                Pay via UPI
+              </a>
+            )}
             {!asking && (
               <Button variant="secondary" disabled={busy !== null || !online} onClick={() => setConfirming(key)}>
                 Record
@@ -201,10 +223,34 @@ export function SettleUpPage() {
             <EmptyState title="Nothing to settle" body="Everyone is square in this group." />
           ) : (
             <div className="space-y-4">
-              <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-pretty text-amber-900 ring-1 ring-amber-200">
-                <span className="font-medium">Before anyone pays:</span> check with the group that every expense has
-                been added. A payment made before the last bill goes in can mean paying twice, or chasing money back.
-              </p>
+              {allIn.everyone ? (
+                <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-pretty text-emerald-800 ring-1 ring-emerald-200">
+                  Everyone has confirmed their expenses are in.
+                </p>
+              ) : (
+                <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-pretty text-amber-900 ring-1 ring-amber-200">
+                  <span className="font-medium">Before anyone pays:</span> check with the group that every expense has
+                  been added. A payment made before the last bill goes in can mean paying twice, or chasing money back.{' '}
+                  {allIn.joined.length > 0 && (
+                    <>
+                      So far{' '}
+                      <Link to={`/group/${groupId}`} className="font-medium underline underline-offset-2">
+                        {allIn.confirmed.length} of {allIn.joined.length}
+                      </Link>{' '}
+                      have ticked that theirs are in.
+                    </>
+                  )}
+                </p>
+              )}
+              {mine.some((t) => t.to === myMemberId) && (upiIds[user.uid] ?? null) === null && (
+                <p className="px-1 text-xs text-pretty text-slate-500">
+                  Add your UPI ID on{' '}
+                  <Link to="/profile" className="text-brand-600 underline underline-offset-2">
+                    your profile
+                  </Link>{' '}
+                  and people who owe you get a one-tap Pay via UPI button with the amount filled in.
+                </p>
+              )}
               <div className="space-y-2">
                 <p className="px-1 text-sm font-medium text-slate-700">
                   {mine.length > 0 ? 'Your payments' : 'Nothing for you to pay or receive right now'}

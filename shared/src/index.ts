@@ -10,3 +10,4 @@ export * from './category.js';
 export * from './insights.js';
 export * from './places.js';
 export * from './mapLinks.js';
+export * from './upi.js';

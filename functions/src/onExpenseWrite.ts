@@ -16,7 +16,7 @@ import {
   writeDelta,
 } from '@app/shared';
 import { deliver, groupFacts } from './push.js';
-import { bucket, db, expensesRef, groupRef } from './common.js';
+import { bucket, db, expensesRef, groupRef, membersRef } from './common.js';
 
 /** Idempotency markers live long enough to cover a retry storm, then TTL away. */
 const EVENT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -96,6 +96,11 @@ export const onExpenseWrite = onDocumentWritten('groups/{groupId}/expenses/{expe
       pairs = applyPairDelta(group.pairs, pairChange);
     }
 
+    // "I've added all my expenses" is undone by adding another one. Read
+    // here, before the first write, as a transaction requires.
+    const freshExpense = !rawBefore && rawAfter && rawAfter.type === 'expense' && !isDeleted(rawAfter);
+    const addedBy = freshExpense ? await tx.get(membersRef(groupId).where('uid', '==', rawAfter.createdBy)) : null;
+
     const update: Record<string, unknown> = { balances, balancesZero: zero, pairs };
     if (zero && !wasZero) update['zeroSince'] = FieldValue.serverTimestamp();
     if (!zero) update['zeroSince'] = null;
@@ -103,6 +108,9 @@ export const onExpenseWrite = onDocumentWritten('groups/{groupId}/expenses/{expe
     if (after) update['lastExpenseAt'] = FieldValue.serverTimestamp();
 
     tx.update(gRef, update);
+    for (const member of addedBy?.docs ?? []) {
+      if (member.data()['allInAt']) tx.update(member.ref, { allInAt: null });
+    }
     tx.set(eventRef, {
       expenseId,
       appliedAt: FieldValue.serverTimestamp(),

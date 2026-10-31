@@ -30,6 +30,8 @@ type ExportArgs = {
   closed: boolean;
   balances: BalanceMap;
   simplifyDebts?: boolean;
+  /** Only the exporter's own entries, balance and payments. */
+  onlyMine?: boolean;
   members: { id: string; name: string; uid?: string | null }[];
   /** Receipt pages at the end of the PDF. On unless switched off; the ZIP keeps its originals either way. */
   includeReceipts?: boolean;
@@ -137,12 +139,20 @@ async function buildGroupPdf(
     import('jspdf-autotable'),
     loadFonts(),
   ]);
-  const expenses = snap.docs
+  const allExpenses = snap.docs
     .map((doc) => {
       const data = doc.data() as Expense<Timestamp>;
       return { ...data, id: doc.id, deletedAtMs: data.deletedAt?.toMillis() ?? null };
     })
     .reverse();
+
+  // Whoever exports gets their own insights alongside the group's — or, for
+  // "just my expenses", only the entries they paid for or had a share in.
+  const me = args.members.find((m) => m.uid && m.uid === auth.currentUser?.uid)?.id ?? null;
+  const view = args.onlyMine ? me : null;
+  const expenses = view
+    ? allExpenses.filter((e) => e.paidBy === view || e.splits.some((s) => s.memberId === view && s.owedPaise > 0))
+    : allExpenses;
 
   const generatedAt = new Date();
   const input: ExportInput = {
@@ -155,8 +165,8 @@ async function buildGroupPdf(
     generatedAt,
     dateFormat: usePreferences.getState().displayDateFormat,
     rupeeSign: fonts !== null,
-    // Whoever exports gets their own insights alongside the group's.
-    myMemberId: args.members.find((m) => m.uid && m.uid === auth.currentUser?.uid)?.id ?? null,
+    myMemberId: me,
+    viewMemberId: view,
   };
   const model = buildExport(input);
 
@@ -228,7 +238,8 @@ async function buildGroupPdf(
     doc.addImage(image.dataUrl, 'JPEG', MARGIN + (boxWidth - width) / 2, top, width, height);
   }
 
-  const fileName = exportFileName(args.groupName, generatedAt);
+  const viewName = view ? (args.members.find((m) => m.id === view)?.name ?? 'me') : null;
+  const fileName = exportFileName(viewName ? `${args.groupName} ${viewName}` : args.groupName, generatedAt);
   let bytes: Uint8Array;
   if (pdfLib && attachments.length > 0) {
     bytes = await mergeAttachments(pdfLib, doc, attachments);

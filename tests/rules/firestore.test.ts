@@ -992,3 +992,43 @@ describe('history and internals', () => {
     await assertFails(setDoc(doc(as(ALICE), 'groups', GROUP_ID, '_events', 'evt-2'), { spoof: true }));
   });
 });
+
+describe('users: UPI id', () => {
+  const profile = { displayName: 'Alice', photoURL: null };
+
+  it('lets you set, change and clear your own UPI id', async () => {
+    await assertSucceeds(setDoc(doc(as(ALICE), 'users', ALICE), { ...profile, upiId: 'alice@oksbi' }));
+    await assertSucceeds(updateDoc(doc(as(ALICE), 'users', ALICE), { upiId: 'alice.j-1@ybl' }));
+    await assertSucceeds(updateDoc(doc(as(ALICE), 'users', ALICE), { upiId: null }));
+  });
+
+  it.each([['no @', 'alice'], ['a bare @', '@upi'], ['spaces', 'alice j@upi'], ['a number', 12345]])(
+    'rejects %s as a UPI id',
+    async (_label, upiId) => {
+      await assertSucceeds(setDoc(doc(as(ALICE), 'users', ALICE), profile));
+      await assertFails(updateDoc(doc(as(ALICE), 'users', ALICE), { upiId }));
+    },
+  );
+});
+
+describe("members: 'all my expenses are in'", () => {
+  it('lets a claimer tick and untick their own slot with a server time', async () => {
+    await assertSucceeds(updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'members', SLOT_BOB), { allInAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'members', SLOT_BOB), { allInAt: null }));
+  });
+
+  it('rejects a client-chosen time', async () => {
+    await assertFails(updateDoc(doc(as(BOB), 'groups', GROUP_ID, 'members', SLOT_BOB), { allInAt: Timestamp.now() }));
+  });
+
+  it("blocks ticking someone else's slot, even for the creator", async () => {
+    await assertFails(updateDoc(doc(as(ALICE), 'groups', GROUP_ID, 'members', SLOT_BOB), { allInAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as(CAROL), 'groups', GROUP_ID, 'members', SLOT_BOB), { allInAt: serverTimestamp() }));
+  });
+});
+
+describe('notification settings: weekly digest', () => {
+  it('accepts the digest switch', async () => {
+    await assertSucceeds(setDoc(doc(as(ALICE), 'users', ALICE, 'settings', 'notifications'), { digest: false }));
+  });
+});

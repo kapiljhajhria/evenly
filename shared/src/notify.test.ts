@@ -4,6 +4,7 @@ import {
   notificationsForComment,
   notificationsForCreate,
   notificationsForDelete,
+  notificationsForDigest,
   notificationsForGroup,
   wants,
   type GroupFacts,
@@ -79,6 +80,13 @@ describe('notificationsForCreate', () => {
     expect(recordedByReceiver.map((n) => [n.uid, n.body])).toEqual([['u-bilal', 'Asha recorded receiving ₹100.00 from you']]);
     const byThird = notificationsForCreate(group, payment, 'u-chitra');
     expect(byThird.find((n) => n.uid === 'u-asha')?.body).toBe('Bilal paid you ₹100.00 (recorded by Chitra)');
+  });
+
+  it('asks the receiver to say an unconfirmed payment arrived', () => {
+    const payment = { ...lunch, type: 'settlement' as const, paidBy: 'm-b', amountPaise: 10000, unconfirmed: true, splits: [{ memberId: 'm-a', input: 10000, owedPaise: 10000 }] };
+    expect(notificationsForCreate(group, payment, 'u-bilal').map((n) => n.body)).toEqual([
+      'Bilal says they paid you ₹100.00 — tap Got it once it has arrived',
+    ]);
   });
 });
 
@@ -157,5 +165,24 @@ describe('notificationsForGroup', () => {
     expect(notificationsForGroup(group, 'auto-closed-unused', null)[0]?.body).toBe(
       'Closed automatically — no expenses in 30 days. The creator can reopen it.',
     );
+  });
+});
+
+describe('notificationsForDigest', () => {
+  it('tells every joined member how the week went and where they stand', () => {
+    const notes = notificationsForDigest(group, {
+      expenseCount: 3,
+      spentPaise: 450000,
+      balances: { 'm-a': 100000, 'm-b': -100000, 'm-c': 0 },
+    });
+    expect(notes.map((n) => [n.uid, n.kind, n.body, n.url])).toEqual([
+      ['u-asha', 'digest', '3 expenses added this week · ₹4,500.00 · you are owed ₹1,000.00', '/group/g'],
+      ['u-bilal', 'digest', '3 expenses added this week · ₹4,500.00 · you owe ₹1,000.00', '/group/g'],
+      ['u-chitra', 'digest', '3 expenses added this week · ₹4,500.00 · you are all square', '/group/g'],
+    ]);
+  });
+
+  it('says nothing for a quiet week', () => {
+    expect(notificationsForDigest(group, { expenseCount: 0, spentPaise: 0, balances: {} })).toEqual([]);
   });
 });

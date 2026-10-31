@@ -10,6 +10,7 @@ import { AppShell } from '../../components/Layout.js';
 import { Button, Card, EmptyState, ErrorNote, FullPageSpinner } from '../../components/ui.js';
 import { BalancePanel } from './BalancePanel.js';
 import { BreakdownCard } from './BreakdownCard.js';
+import { AllInCard } from './AllInCard.js';
 import { EditableGroupName } from './EditableGroupName.js';
 import { ExpenseList } from '../expense/ExpenseList.js';
 import { ExportButton } from '../export/ExportButton.js';
@@ -189,6 +190,10 @@ export function GroupPage() {
             </div>
           )}
 
+          {isActive && group.lastExpenseAt && (
+            <AllInCard groupId={groupId} members={members} myMemberId={myMemberId} canTick={myMemberId !== null} />
+          )}
+
           {group.lastExpenseAt && <BreakdownCard
               groupId={groupId}
               balances={group.balances ?? {}}
@@ -207,11 +212,12 @@ export function GroupPage() {
           {unconfirmed.length > 0 && (
             <div className="space-y-1.5 rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-200">
               <p className="text-sm font-semibold text-amber-900">
-                {unconfirmed.length === 1 ? '1 expense needs' : `${unconfirmed.length} expenses need`} confirming
+                {unconfirmed.length === 1 ? '1 entry needs' : `${unconfirmed.length} entries need`} confirming
               </p>
-              <p className="text-xs text-amber-800">
-                They count in the balances above, but who paid or how they were split may be wrong. If you know, confirm
-                them, or comment so whoever added them can fix it.
+              <p className="text-xs text-pretty text-amber-800">
+                They count in the balances above. For an expense, who paid or the split may be wrong — confirm it or
+                comment so whoever added it can fix it. For a payment, the person it went to has not yet said it
+                arrived.
               </p>
               <ul className="flex flex-wrap gap-1.5">
                 {unconfirmed.map((expense) => (
@@ -220,7 +226,9 @@ export function GroupPage() {
                       to={`/group/${groupId}/expense/${expense.id}`}
                       className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-900 ring-1 ring-amber-300 hover:bg-amber-100"
                     >
-                      {expense.description}
+                      {expense.type === 'settlement'
+                        ? `${byId[expense.paidBy]?.name ?? 'Someone'} → ${byId[expense.splits[0]?.memberId ?? '']?.name ?? 'someone'}`
+                        : expense.description}
                     </Link>
                   </li>
                 ))}
@@ -292,6 +300,7 @@ export function GroupPage() {
               balances={group.balances ?? {}}
               members={exportMembers}
               simplifyDebts={group.simplifyDebts === true}
+              mineOption={myMemberId !== null}
               withZip
               receiptsOption
             />

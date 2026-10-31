@@ -10,7 +10,7 @@ import { UNUSED_CLOSE_DAYS } from './lifecycle.js';
  * never the person who caused it.
  */
 
-export const NOTIFICATION_KINDS = ['expenses', 'payments', 'confirmations', 'deletions', 'comments', 'groups'] as const;
+export const NOTIFICATION_KINDS = ['expenses', 'payments', 'confirmations', 'deletions', 'comments', 'groups', 'digest'] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 /** `users/{uid}/settings/notifications`. Missing doc or field = on. */
@@ -88,7 +88,9 @@ export function notificationsForCreate(group: GroupFacts, expense: ExpenseFacts,
       const amount = formatPaise(expense.amountPaise);
       const body =
         receiver === me
-          ? `${payer} paid you ${amount}${recordedBy}`
+          ? expense.unconfirmed
+            ? `${payer} says they paid you ${amount}${recordedBy} — tap Got it once it has arrived`
+            : `${payer} paid you ${amount}${recordedBy}`
           : actorMember === receiver
             ? `${actor} recorded receiving ${amount} from you`
             : `${actor} recorded that you paid ${memberName(group, receiver)} ${amount}`;
@@ -207,4 +209,30 @@ export function notificationsForGroup(
       url: `/group/${group.groupId}`,
       tag: `group:${group.groupId}`,
     }));
+}
+
+/**
+ * Monday's one-liner per active group with new expenses: how many, how
+ * much, and where this person stands. Nothing when nothing was added.
+ */
+export function notificationsForDigest(
+  group: GroupFacts,
+  week: { expenseCount: number; spentPaise: number; balances: Record<string, number> },
+): OutgoingNotification[] {
+  if (week.expenseCount === 0) return [];
+  const out: OutgoingNotification[] = [];
+  for (const [memberId, uid] of Object.entries(group.uidOf)) {
+    if (!uid) continue;
+    const net = week.balances[memberId] ?? 0;
+    const standing = net > 0 ? `you are owed ${formatPaise(net)}` : net < 0 ? `you owe ${formatPaise(-net)}` : 'you are all square';
+    out.push({
+      uid,
+      kind: 'digest',
+      title: group.groupName,
+      body: `${week.expenseCount === 1 ? '1 expense' : `${week.expenseCount} expenses`} added this week · ${formatPaise(week.spentPaise)} · ${standing}`,
+      url: `/group/${group.groupId}`,
+      tag: `digest:${group.groupId}`,
+    });
+  }
+  return out;
 }

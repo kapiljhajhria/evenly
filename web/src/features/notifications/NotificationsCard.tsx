@@ -15,6 +15,7 @@ const KIND_LABELS: Record<NotificationKind, { label: string; hint: string }> = {
   deletions: { label: 'Deletions', hint: 'An expense you are in is deleted' },
   comments: { label: 'Comments', hint: 'On expenses you are in or have commented on' },
   groups: { label: 'Group updates', hint: 'A group closing soon, closed or reopened' },
+  digest: { label: 'Weekly summary', hint: 'Monday morning: what was added last week, and where you stand' },
 };
 
 const BLOCKED_HELP: Record<ReturnType<typeof detectPlatform>, string> = {

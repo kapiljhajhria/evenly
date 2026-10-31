@@ -156,6 +156,11 @@ export interface Member<TS = TimestampLike> {
   photoURL: string | null;
   claimedAt: TS | null;
   createdAt: TS;
+  /**
+   * "I've added all my expenses" — set by the member, cleared by
+   * onExpenseWrite when they add another. Absent or null = not ticked.
+   */
+  allInAt?: TS | null;
 }
 
 export interface Expense<TS = TimestampLike> {
@@ -243,6 +248,8 @@ export interface UserDoc<TS = TimestampLike> {
   displayName: string | null;
   photoURL: string | null;
   createdAt: TS;
+  /** For the "Pay via UPI" button others see. Optional; see upi.ts. */
+  upiId?: string | null;
 }
 
 /** Doc + its id, the shape hooks hand to components. */

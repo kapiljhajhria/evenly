@@ -22,6 +22,7 @@ export function ExportButton({
   closed,
   balances,
   simplifyDebts = false,
+  mineOption = false,
   members,
   label = 'Download PDF',
   variant = 'secondary',
@@ -34,6 +35,8 @@ export function ExportButton({
   closed: boolean;
   balances: BalanceMap;
   simplifyDebts?: boolean;
+  /** Offer "Just my expenses". Only when the exporter has a slot in the group. */
+  mineOption?: boolean;
   members: { id: string; name: string; uid?: string | null }[];
   label?: string;
   variant?: 'primary' | 'secondary';
@@ -51,6 +54,7 @@ export function ExportButton({
   const [done, setDone] = useState<{ kind: Kind; result: ExportResult & { originals?: number } } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [includeReceipts, setIncludeReceipts] = useState(true);
+  const [onlyMine, setOnlyMine] = useState(false);
 
   const run = async (kind: Kind) => {
     setBusy(kind);
@@ -63,6 +67,7 @@ export function ExportButton({
         closed,
         balances,
         simplifyDebts,
+        onlyMine: mineOption && onlyMine,
         members,
         includeReceipts: receiptsOption ? includeReceipts : true,
         onProgress: setProgress,
@@ -85,6 +90,23 @@ export function ExportButton({
 
   return (
     <div className="space-y-2">
+      {mineOption && (
+        <label className="flex items-center gap-2.5 rounded-xl px-1 py-1 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={onlyMine}
+            onChange={(e) => setOnlyMine(e.target.checked)}
+            disabled={busy !== null}
+            className="size-4 accent-brand-600"
+          />
+          <span>
+            Just my expenses
+            <span className="block text-xs text-slate-500">
+              {onlyMine ? 'Only entries you paid for or were part of, with your balance.' : 'Everything in the group.'}
+            </span>
+          </span>
+        </label>
+      )}
       {receiptsOption && (
         <label className="flex items-center gap-2.5 rounded-xl px-1 py-1 text-sm text-slate-700">
           <input

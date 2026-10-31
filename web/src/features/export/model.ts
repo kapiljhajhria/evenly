@@ -57,6 +57,12 @@ export interface ExportInput {
   myMemberId?: string | null;
   /** The group's "fewest payments" setting. Off or absent: the direct debts are the transfers. */
   simplifyDebts?: boolean;
+  /**
+   * "My view": `expenses` already holds only this member's entries (pdf.ts
+   * filters them); the model then keeps only their balance and payments and
+   * drops the group-wide insights. Null for the whole group.
+   */
+  viewMemberId?: string | null;
 }
 
 /**
@@ -208,6 +214,8 @@ export function buildExport(input: ExportInput): ExportModel {
   const money = (paise: number) => pdfMoney(paise, input.rupeeSign ?? false);
   const names = new Map(input.members.map((m) => [m.id, m.name]));
   const nameOf = (memberId: string): string => names.get(memberId) ?? 'Removed member';
+  const view = input.viewMemberId && names.has(input.viewMemberId) ? input.viewMemberId : null;
+  const involvesView = (t: { from: string; to: string }): boolean => view === null || t.from === view || t.to === view;
   const nameOfUid = (uid: string | null | undefined): string =>
     input.members.find((m) => m.uid && m.uid === uid)?.name ?? 'Someone';
   const isGone = (expense: ExportExpense) => Boolean(expense.deletedBy) || Boolean(expense.deletedAtMs);
@@ -283,7 +291,7 @@ export function buildExport(input: ExportInput): ExportModel {
     }
   }
 
-  const balanceRows: ExportModel['balanceRows'] = input.members.map((member) => {
+  const balanceRows: ExportModel['balanceRows'] = input.members.filter((m) => view === null || m.id === view).map((member) => {
     const net = netFor(input.balances, member.id);
     const position = net > 0 ? `is owed ${money(net)}` : net < 0 ? `owes ${money(-net)}` : 'settled up';
     return [member.name, position];
@@ -293,7 +301,9 @@ export function buildExport(input: ExportInput): ExportModel {
   // group has that on.
   const debts = pairwiseDebts(expenses);
   const simplify = input.simplifyDebts === true;
-  const plan = paymentPlan({ balances: input.balances, debts, simplify });
+  // In "my view" only this person's payments; the step explanation needs
+  // the whole plan, so it is simply not offered there.
+  const plan = paymentPlan({ balances: input.balances, debts, simplify }).filter(involvesView);
   const transferRows: ExportModel['transferRows'] = plan.map((t) => [
     nameOf(t.from),
     nameOf(t.to),
@@ -302,7 +312,7 @@ export function buildExport(input: ExportInput): ExportModel {
 
   // Spell out any middle step the plan skips, so a payment to someone the
   // payer never owed directly is explained on the page.
-  const explained = simplify ? explainSettlement(debts, plan) : null;
+  const explained = simplify && view === null ? explainSettlement(debts, plan) : null;
   const namer = { name: nameOf, me: null };
   const rerouted =
     explained !== null && explained.shortcuts.length > 0 && explained.shortcuts.length <= MAX_EXPLAINED_SHORTCUTS;
@@ -329,7 +339,7 @@ export function buildExport(input: ExportInput): ExportModel {
   });
 
   return {
-    title: input.groupName,
+    title: view === null ? input.groupName : `${input.groupName} — ${nameOf(view)}'s view`,
     subtitle: `${input.closed ? 'Closed group' : 'Active group'} · exported ${formatDateTimeOf(input.generatedAt, dateFormat)}`,
     totals: { spentPaise, expenseCount: expenses.length - settlementCount, settlementCount, personalPaise },
     balanceRows,
@@ -342,7 +352,7 @@ export function buildExport(input: ExportInput): ExportModel {
     ledgerTags,
     receipts,
     deletedRows,
-    groupInsights: insightsSection(input, null, 'Group insights', money, nameOf, dateFormat),
+    groupInsights: view === null ? insightsSection(input, null, 'Group insights', money, nameOf, dateFormat) : null,
     myInsights:
       input.myMemberId && names.has(input.myMemberId)
         ? insightsSection(input, input.myMemberId, `Your insights — ${nameOf(input.myMemberId)}`, money, nameOf, dateFormat)

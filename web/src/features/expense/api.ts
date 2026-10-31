@@ -106,6 +106,8 @@ export async function addSettlement(args: {
   createdBy: string;
   note?: string;
   receipts?: PendingReceipt[];
+  /** Recorded by someone other than the receiver: they get a "Got it" to confirm it arrived. */
+  unconfirmed?: boolean;
 }): Promise<string> {
   const splits = settlementSplits(args.toMemberId, args.amountPaise);
   const parts = normalizeParts(args.parts);
@@ -126,6 +128,7 @@ export async function addSettlement(args: {
     splits,
     // Only written when there is one, so plain payments keep their old shape.
     ...(parts ? { parts } : {}),
+    ...(args.unconfirmed ? { unconfirmed: true } : {}),
     receiptStatus: 'none',
     receiptPath: null,
     ...pendingReceipts(args.receipts),
@@ -191,6 +194,8 @@ export async function restoreExpense(groupId: string, expenseId: string): Promis
 export function expensePermissions(args: {
   expense: Expense<Timestamp>;
   payerUid: string | null | undefined;
+  /** For a payment: who received it. They may confirm it arrived. */
+  receiverUid?: string | null;
   uid: string | undefined;
   groupCreatedBy: string;
   groupActive: boolean;
@@ -202,7 +207,7 @@ export function expensePermissions(args: {
   canConfirm: boolean;
   canRestore: boolean;
 } {
-  const { expense, payerUid, uid, groupCreatedBy, groupActive } = args;
+  const { expense, payerUid, receiverUid, uid, groupCreatedBy, groupActive } = args;
   if (!groupActive || !uid) {
     return {
       canEdit: false,
@@ -224,8 +229,9 @@ export function expensePermissions(args: {
     // even when the expense was paid by someone else. Payments too: a UPI
     // screenshot is the proof.
     canManageReceipt: owns || expense.createdBy === uid,
-    // Mirrors updateExpense: the payer, or whoever recorded it.
-    canConfirm: owns || expense.createdBy === uid,
+    // Mirrors updateExpense: the payer, whoever recorded it — or, for a
+    // payment, the person it was paid to ("Got it").
+    canConfirm: owns || expense.createdBy === uid || (receiverUid != null && receiverUid === uid),
     // Restore mirrors delete: the payer, or the group creator.
     canRestore: owns || groupCreatedBy === uid,
   };
