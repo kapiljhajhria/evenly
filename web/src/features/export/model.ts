@@ -31,7 +31,7 @@ export type ExportExpense = Pick<
   Expense<unknown>,
   'type' | 'description' | 'note' | 'date' | 'time' | 'amountPaise' | 'paidBy' | 'splits' | 'receiptPath' | 'parts' | 'unconfirmed' | 'deletedBy'
 > &
-  Partial<Pick<Expense<unknown>, 'receiptStatus' | 'receipts' | 'category'>> & {
+  Partial<Pick<Expense<unknown>, 'receiptStatus' | 'receipts' | 'category' | 'location'>> & {
   id: string;
   /** Set when soft-deleted. Millis, so the model stays free of Timestamp. */
   deletedAtMs?: number | null;

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { recoverFromStaleApp, StaleAppError } from '../../lib/update.js';
 import type { BalanceMap } from '@app/shared';
 import { Button, ErrorNote } from '../../components/ui.js';
 import { exportGroupPdf, exportGroupZip, type ExportProgress, type ExportResult } from './pdf.js';
@@ -76,7 +77,7 @@ export function ExportButton({
       setDone({ kind, result });
       onExported?.(result);
     } catch (err) {
-      setError((err as Error).message || 'The export did not work. Try again.');
+      setError(err instanceof StaleAppError ? await recoverFromStaleApp() : (err as Error).message || 'The export did not work. Try again.');
     } finally {
       setBusy(null);
       setProgress(null);

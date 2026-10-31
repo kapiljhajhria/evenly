@@ -17,6 +17,7 @@ import { buildExportJson } from './json.js';
 import { categoryColor, FAINT, INK, MARIGOLD, MUTED, OWED, OWES, PAPER, RULE, tagStyle, type LedgerTag, type Rgb } from './tags.js';
 import { insertionIndices, receiptKind } from '../receipt/kind.js';
 import { usePreferences } from '../../stores/preferences.js';
+import { lazy } from '../../lib/update.js';
 
 export type ExportProgress =
   | { step: 'loading' }
@@ -54,7 +55,7 @@ export async function exportGroupPdf(args: ExportArgs): Promise<ExportResult> {
  * the PDF; fflate is loaded only when someone asks for a ZIP.
  */
 export async function exportGroupZip(args: ExportArgs): Promise<ExportResult & { originals: number }> {
-  const [built, { zip, strToU8 }] = await Promise.all([buildGroupPdf(args), import('fflate')]);
+  const [built, { zip, strToU8 }] = await Promise.all([buildGroupPdf(args), lazy(() => import('fflate'))]);
   const names = zipEntryNames(built.model.receipts);
   const files: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = {
     [built.fileName]: [built.bytes, { level: 0 }],
@@ -135,9 +136,11 @@ async function buildGroupPdf(
   const [snap, { jsPDF }, { default: autoTable }, fonts] = await Promise.all([
     getDocs(query(expensesCol(args.groupId), orderBy('date', 'desc'), orderBy('createdAt', 'desc'))),
     // Loaded on demand: jsPDF is larger than the rest of the app put together.
-    import('jspdf'),
-    import('jspdf-autotable'),
-    loadFonts(),
+    // These chunks are not precached, so on a build that has since been
+    // replaced they fail — lazy() turns that into a StaleAppError.
+    lazy(() => import('jspdf')),
+    lazy(() => import('jspdf-autotable')),
+    lazy(loadFonts),
   ]);
   const allExpenses = snap.docs
     .map((doc) => {
@@ -202,7 +205,7 @@ async function buildGroupPdf(
     };
 
     if (receiptKind(receipt.path) === 'pdf') {
-      pdfLib ??= await import('pdf-lib');
+      pdfLib ??= await lazy(() => import('pdf-lib'));
       const loaded = await loadReceiptPdf(pdfLib!, receipt.path).then(
         (source) => ({ source, reason: null }),
         (error: unknown) => ({ source: null, reason: failureOf(error, receipt.path) }),

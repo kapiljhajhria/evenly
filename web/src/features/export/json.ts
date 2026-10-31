@@ -58,6 +58,8 @@ interface ExpenseJson {
   date: string;
   time: string | null;
   category: string | null;
+  /** Where it happened, when recorded. `accuracy` is metres, null if unknown or typed by hand. */
+  location: { lat: number; lng: number; name: string | null; accuracy: number | null } | null;
   amountPaise: number;
   amountRupees: string;
   paidBy: string;
@@ -141,6 +143,9 @@ export function buildExportJson(input: ExportInput, model: ExportModel, receiptN
       date: e.date,
       time: e.time ?? null,
       category: typeof e.category === 'string' ? e.category : null,
+      location: e.location
+        ? { lat: e.location.lat, lng: e.location.lng, name: e.location.name ?? null, accuracy: e.location.accuracy ?? null }
+        : null,
       amountPaise: e.amountPaise,
       amountRupees: rupees(e.amountPaise),
       paidBy: e.paidBy,

@@ -9,6 +9,15 @@ import { OfflineBar } from './components/OfflineBar.js';
 import { ReceiptUploads } from './features/receipt/ReceiptSection.js';
 import { PushRefresher } from './features/notifications/NotificationsCard.js';
 import './index.css';
+import { recoverFromStaleApp } from './lib/update.js';
+
+// A lazily loaded chunk that no longer exists on the server means this window
+// is on a build that has been replaced. Move it onto the new one rather than
+// leave a half-working page.
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
+  void recoverFromStaleApp();
+});
 
 const container = document.getElementById('root');
 if (!container) throw new Error('#root is missing from index.html');
