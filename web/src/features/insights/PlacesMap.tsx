@@ -137,7 +137,11 @@ export function PlacesMap({ places, selectedPlace, selectedDay, onSelectPlace, l
         keyboard: false,
         zIndexOffset: 1000,
       })
-        .bindTooltip(`Stop ${index + 1} · ${dates} · ${formatPaise(stop.paise)}`, { direction: 'top', offset: [0, -10] })
+        .bindTooltip(
+          `Stop ${index + 1}${stop.label ? ` · ${stop.label}` : ''} · ${dates} · ${formatPaise(stop.paise)}` +
+            (stop.count > 1 ? ` · ${stop.count} spends` : ''),
+          { direction: 'top', offset: [0, -10] },
+        )
         .addTo(layer);
     });
   }, [journey, dateFormat]);

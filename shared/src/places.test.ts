@@ -112,27 +112,81 @@ describe('mapIsUseful / locationsNeeded', () => {
 });
 
 describe('journeyStops', () => {
-  const point = (lat: number, lng: number, paise: number, date: string) => ({ lat, lng, paise, date, description: '' });
+  const point = (lat: number, lng: number, paise: number, date: string, time: string | null = null, description = '', stay = false) => ({
+    lat,
+    lng,
+    paise,
+    date,
+    time,
+    description,
+    stay,
+  });
   const day = (date: string, ...points: ReturnType<typeof point>[]) => ({
     date,
     paise: points.reduce((sum, p) => sum + p.paise, 0),
     points,
   });
 
-  it('places each day at its biggest spend and merges days in one area', () => {
+  it('follows every move, in order, and folds nearby spends into one stop', () => {
     const stops = journeyStops([
-      day('2026-10-01', point(15.5527, 73.7517, 2_400, '2026-10-01'), point(15.549, 73.764, 1_200, '2026-10-01')),
-      // Travel day: the bus leaves Goa, but the guesthouse in Hampi is the big spend.
-      day('2026-10-03', point(15.2993, 74.124, 3_200, '2026-10-03'), point(15.335, 76.46, 6_400, '2026-10-03')),
+      // Two cafés ~1.4km apart in Goa: one stop.
+      day('2026-10-01', point(15.5527, 73.7517, 2_400, '2026-10-01', '09:00'), point(15.549, 73.764, 1_200, '2026-10-01', '13:00')),
+      // Travel day: a bus-station snack, then the guesthouse in Hampi — both stops.
+      day('2026-10-03', point(15.2993, 74.124, 3_200, '2026-10-03', '08:00'), point(15.335, 76.46, 6_400, '2026-10-03', '19:00')),
       // Still in Hampi, ~1.2km away: same stop.
-      day('2026-10-04', point(15.34, 76.47, 800, '2026-10-04')),
-      day('2026-10-05', point(12.9791, 77.6408, 2_100, '2026-10-05')),
+      day('2026-10-04', point(15.34, 76.47, 800, '2026-10-04', '10:00')),
+      day('2026-10-05', point(12.9791, 77.6408, 2_100, '2026-10-05', '20:00')),
     ]);
-    expect(stops.map((s) => [s.lat, s.lng, s.firstDate, s.lastDate, s.paise])).toEqual([
-      [15.5527, 73.7517, '2026-10-01', '2026-10-01', 3_600],
-      [15.335, 76.46, '2026-10-03', '2026-10-04', 10_400],
-      [12.9791, 77.6408, '2026-10-05', '2026-10-05', 2_100],
+    expect(stops.map((s) => [s.lat, s.lng, s.firstDate, s.lastDate, s.paise, s.count])).toEqual([
+      [15.5527, 73.7517, '2026-10-01', '2026-10-01', 3_600, 2],
+      [15.2993, 74.124, '2026-10-03', '2026-10-03', 3_200, 1],
+      [15.335, 76.46, '2026-10-03', '2026-10-04', 7_200, 2],
+      [12.9791, 77.6408, '2026-10-05', '2026-10-05', 2_100, 1],
     ]);
+  });
+
+  it('keeps the highway stops of a road trip, not just where the night was spent', () => {
+    // Pune → Goa: fuel near Pune, lunch and fuel around Kolhapur, hotel in Goa.
+    const stops = journeyStops([
+      day(
+        '2026-08-15',
+        point(18.1034, 73.9907, 141_492, '2026-08-15', '08:44', 'Fuel (2633 km)'),
+        point(16.5378, 74.3192, 139_500, '2026-08-15', '12:30', 'Lunch Break'),
+        point(16.2586, 74.4686, 93_082, '2026-08-15', '14:38', 'Fuel (2863 km)'),
+        point(15.5186, 73.7648, 487_400, '2026-08-15', '18:30', 'Hotel Sands'),
+      ),
+      day('2026-08-16', point(15.5181, 73.7676, 460_900, '2026-08-16', '00:35', 'Vadoo 15')),
+    ]);
+    expect(stops.map((s) => s.label)).toEqual(['Fuel (2633 km)', 'Lunch Break', 'Fuel (2863 km)', 'Hotel Sands']);
+    expect(stops[3]).toMatchObject({ firstDate: '2026-08-15', lastDate: '2026-08-16', count: 2 });
+  });
+
+  it('puts the night\'s stay at the end of its day, whatever time the bill was recorded', () => {
+    // The real Goa data: the hotel was recorded at 15:23, the same minute as
+    // lunch 150km up the highway, with a fuel stop still to come at 16:38.
+    const stops = journeyStops([
+      day(
+        '2026-08-15',
+        point(18.1034, 73.9907, 141_492, '2026-08-15', '08:44', 'Fuel (2633 km)'),
+        point(16.5378, 74.3192, 139_500, '2026-08-15', '15:23', 'Lunch Break'),
+        point(15.5186, 73.7648, 487_400, '2026-08-15', '15:23', 'Hotel Sands', true),
+        point(16.2586, 74.4686, 93_082, '2026-08-15', '16:38', 'Fuel (2863 km)'),
+      ),
+    ]);
+    expect(stops.map((s) => s.label)).toEqual(['Fuel (2633 km)', 'Lunch Break', 'Fuel (2863 km)', 'Hotel Sands']);
+  });
+
+  it('orders by time within a day, with untimed spends last, and labels a stop by its biggest spend', () => {
+    const stops = journeyStops([
+      day(
+        '2026-10-01',
+        point(15.6028, 73.7369, 280, '2026-10-01', null, 'Coconut water'),
+        point(15.5186, 73.7648, 6_000, '2026-10-01', '09:00', 'Hotel'),
+        point(15.5203, 73.7675, 2_636, '2026-10-01', '13:08', 'Breakfast'),
+      ),
+    ]);
+    expect(stops.map((s) => s.label)).toEqual(['Hotel', 'Coconut water']);
+    expect(stops[0]!.count).toBe(2);
   });
 
   it('is a single stop for a group that never left town', () => {

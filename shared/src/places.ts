@@ -12,6 +12,8 @@ import type { InsightExpense, InsightScope } from './insights.js';
 export interface PlaceExpense extends InsightExpense {
   description?: string;
   location?: unknown;
+  /** `HH:mm`, when recorded; orders the journey within a day. */
+  time?: string | null;
 }
 
 export interface PlacePoint {
@@ -19,6 +21,9 @@ export interface PlacePoint {
   lng: number;
   paise: number;
   date: string;
+  time?: string | null;
+  /** A hotel or other stay: where the day ended, whatever time the bill was recorded. */
+  stay?: boolean;
   description: string;
 }
 
@@ -126,6 +131,8 @@ export function computePlaces(expenses: readonly PlaceExpense[], scope: InsightS
       lng: expense.location.lng,
       paise: amount,
       date: expense.date,
+      time: typeof expense.time === 'string' ? expense.time : null,
+      stay: categoryInfo(expense.category).key === 'stay',
       description: typeof expense.description === 'string' ? expense.description : '',
       name: locationName(expense.location),
     });
@@ -198,32 +205,68 @@ export interface JourneyStop {
   lng: number;
   firstDate: string;
   lastDate: string;
-  /** What was spent, at mapped places, on the days merged into this stop. */
+  /** What was spent, at mapped places, in the spends merged into this stop. */
   paise: number;
+  /** How many spends it merges. */
+  count: number;
+  /** The biggest spend here, as a label. */
+  label: string;
 }
 
-/** Consecutive days closer than this are one stop — a few days in one town. */
+/** A spend closer than this to the previous stop is the same stop — the next café in town, not a move. */
 export const JOURNEY_MERGE_METRES = 2_000;
 
 /**
- * The trip as a line: one stop per day, in date order. Expenses aren't a GPS
- * trail, so joining every spend would zig-zag between cafés and across the
- * map whenever the group splits up. A day is placed at its biggest spend —
- * usually the stay or the main outing — and consecutive days in the same
- * area merge so the line only moves when the group did.
+ * Date, then time; spends without a time sort after that day's timed ones.
+ * A stay sorts last of all: a hotel bill is recorded whenever — at booking,
+ * at check-in, at lunch the same day — but the night was spent there, so
+ * that is where the day's line ends.
+ */
+function byWhen(a: PlacePoint, b: PlacePoint): number {
+  if (a.date !== b.date) return a.date.localeCompare(b.date);
+  if (Boolean(a.stay) !== Boolean(b.stay)) return a.stay ? 1 : -1;
+  const ta = a.time ?? '99:99';
+  const tb = b.time ?? '99:99';
+  return ta.localeCompare(tb) || b.paise - a.paise;
+}
+
+/**
+ * The trip as a line: every located spend in the order it happened, with a
+ * spend within JOURNEY_MERGE_METRES of the previous stop folded into it. So a
+ * day's cafés in one town are one stop, while a fuel stop on the highway, a
+ * detour up the coast or a move to the next town each get their own. The
+ * line only moves when the group did — and it moves every time they did,
+ * not just once a day.
+ *
+ * Order is the expense's date and time, with a stay pinned to the end of its
+ * day (see byWhen). Any other wrong time shows as a detour; fixing the time
+ * fixes the line.
  */
 export function journeyStops(days: readonly PlaceDay[]): JourneyStop[] {
-  const stops: JourneyStop[] = [];
-  for (const day of days) {
-    const anchor = day.points.reduce<PlacePoint | null>((top, p) => (top && top.paise >= p.paise ? top : p), null);
-    if (!anchor) continue;
+  const points = days.flatMap((day) => day.points).sort(byWhen);
+  const stops: (JourneyStop & { top: number })[] = [];
+  for (const point of points) {
     const last = stops[stops.length - 1];
-    if (last && distanceMetres(last, anchor) <= JOURNEY_MERGE_METRES) {
-      last.lastDate = day.date;
-      last.paise += day.paise;
+    if (last && distanceMetres(last, point) <= JOURNEY_MERGE_METRES) {
+      last.lastDate = point.date;
+      last.paise += point.paise;
+      last.count += 1;
+      if (point.paise > last.top) {
+        last.top = point.paise;
+        last.label = point.description;
+      }
       continue;
     }
-    stops.push({ lat: anchor.lat, lng: anchor.lng, firstDate: day.date, lastDate: day.date, paise: day.paise });
+    stops.push({
+      lat: point.lat,
+      lng: point.lng,
+      firstDate: point.date,
+      lastDate: point.date,
+      paise: point.paise,
+      count: 1,
+      label: point.description,
+      top: point.paise,
+    });
   }
-  return stops;
+  return stops.map(({ top: _top, ...stop }) => stop);
 }
